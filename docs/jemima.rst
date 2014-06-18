@@ -1,0 +1,6 @@
+
+JEMIMA
+======
+
+.. automodule:: jemima
+    :members:

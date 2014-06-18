@@ -1,0 +1,20 @@
+#!/bin/bash -ex
+
+# Create virtualenv
+virtualenv --system-site-packages virtualenv
+
+# Activate virtualenv
+. virtualenv/bin/activate
+
+# Install latest versions of things we need
+pip install --upgrade --force sphinx
+pip install --upgrade ipython numpy matplotlib scipy pandas rpy2
+
+# Update path to other packages we depend on
+PYTHONVERSION=$(python -c "import sys; print '{0}.{1}'.format(sys.version_info.major, sys.version_info.minor)")
+SITEPACKAGES=virtualenv/lib/python$PYTHONVERSION/site-packages
+DEV=/home/john/Dev
+echo $DEV/JEMIMA/python >$SITEPACKAGES/jemima.pth
+echo $DEV/pyseqan/python >$SITEPACKAGES/pyseqan.pth
+echo $DEV/Cookbook/python >$SITEPACKAGES/cookbook.pth
+

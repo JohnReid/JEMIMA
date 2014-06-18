@@ -1,0 +1,9 @@
+# Determine directory
+SELF=$(readlink -f $BASH_SOURCE)
+PROJECTDIR=$(dirname $SELF)
+
+# Activate virtualenv
+. $PROJECTDIR/virtualenv/bin/activate
+
+# Update PATH
+PATH=$PROJECTDIR/bin:$PATH
