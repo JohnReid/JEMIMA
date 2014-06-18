@@ -68,7 +68,7 @@ seqan.traverse.topdownhistorytraversal(index.topdownhistory(), sumvisitor)
 logging.info('Sums:\n%s', summer.sums)
 trueZnsum = summer.sums[0].sum()
 logging.info('True sum: %s', trueZnsum)
-#logo(normalisepwm(sumvisitor.sums), 'learnt')
+#logo(normalisearray(sumvisitor.sums), 'learnt')
 
 logging.info('Counting W-mers')
 Ws = [W]
@@ -76,12 +76,11 @@ Wmercounts = npy.zeros((2*len(index), len(Ws)), dtype=npy.uint)
 numWmers = wmers.countWmersMulti(index.topdownhistory(), Ws, Wmercounts)[0]
 logging.info('Got %d %d-mers', numWmers, W)
 childWmerfreqs = npy.zeros((2*len(index), len(Ws), jem.SIGMA))
-childWmerfreqs = jem.normalisepwm(childWmerfreqs)
 wmers.countWmerChildren(index.topdownhistory(), W, Wmercounts, childWmerfreqs)
+childWmerfreqs = jem.normalisearray(childWmerfreqs)
 sumestimator = jis.makesumestimator(numWmers)
-1/0
 
-numsamples = 3000
+numsamples = 30000
 rdm.seed(1)
 logging.info('Importance sampling using binding site model')
 samplebs, cbbs = jis.importancesample(
@@ -106,9 +105,9 @@ logging.info('Estimates:\n%s', samplesgrouped['Zweighted'].aggregate(sumestimato
 logging.info('True sum: %s', trueZnsum)
 
 # Examine how close each estimate of the pwm was
-pwmbs = jem.normalisepwm(cbbs.cb.summer.sums)
-pwmbg = jem.normalisepwm(cbbg.cb.summer.sums)
-pwmtrue = jem.normalisepwm(summer.sums)
+pwmbs = jem.normalisearray(cbbs.cb.summer.sums)
+pwmbg = jem.normalisearray(cbbg.cb.summer.sums)
+pwmtrue = jem.normalisearray(summer.sums)
 logging.info('BS PWM distance/base: %f', npy.linalg.norm(pwmtrue - pwmbs, ord=1) / W)
 logging.info('BG PWM distance/base: %f', npy.linalg.norm(pwmtrue - pwmbg, ord=1) / W)
 

@@ -58,17 +58,24 @@ def addpseudocounts(pwm, numsites, pseudocount):
     return (pwm * numsites + pseudocount) / (numsites + pseudocount)
 
 
-def normalisepwm(pwm):
+def normalisearray(pwm):
     """
-    Normalise a PWM, that is make its entries sum to 1 for each position.
-
-    In general this function returns an array such that the last dimension
-    always sums to 1.
+    Normalise an array, that is make every slice in the last dimension sum to 1.
 
     .. doctest::
 
         >>> import numpy
         >>> import jemima
+        >>> a = numpy.array([3, 6, 3, 0], dtype=numpy.float)
+        >>> jemima.normalisearray(a)
+        array([ 0.25,  0.5 ,  0.25,  0.  ])
+        >>> a = numpy.array([
+        ...     [2, 2, 0, 0],
+        ...     [0, 0, 1, 1],
+        ... ], dtype=numpy.float)
+        >>> jemima.normalisearray(a)
+        array([[ 0.5,  0.5,  0. ,  0. ],
+               [ 0. ,  0. ,  0.5,  0.5]])
         >>> a = numpy.array([
         ...     [
         ...         [2, 2, 0, 0],
@@ -83,7 +90,7 @@ def normalisepwm(pwm):
         ...         [0, 2, 2, 0],
         ...     ],
         ... ], dtype=numpy.float)
-        >>> jemima.normalisepwm(a)
+        >>> jemima.normalisearray(a)
         array([[[ 0.5,  0.5,  0. ,  0. ],
                 [ 0. ,  0. ,  0.5,  0.5]],
         <BLANKLINE>
