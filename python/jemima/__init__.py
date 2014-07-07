@@ -4,7 +4,8 @@
 
 
 """
-JEMIMA: a motif finder and tools based upon suffix arrays and importance sampling.
+JEMIMA: a motif finder and tools based upon suffix arrays and
+importance sampling.
 """
 
 
@@ -41,15 +42,17 @@ def logo(dist, tag, make_png=False, make_eps=True, write_title=True):
 
 
 def uniform0orderloglikelihood(X):
-    """A likelihood function that assigns 1/4 probability to each base at each position."""
+    """A likelihood function that assigns 1/4 probability to each base
+    at each position."""
     return len(X) * LOGQUARTER
 
 
 def createloglikelihoodforpwmfn(pwm):
     """Create a function that computes the log likelihood for the pwm."""
     logpwm = npy.log(pwm)
+
     def loglikelihood(X):
-        return sum(logpwm[w,base.ordValue] for w, base in enumerate(X))
+        return sum(logpwm[w, base.ordValue] for w, base in enumerate(X))
     return loglikelihood
 
 
@@ -60,7 +63,8 @@ def addpseudocounts(pwm, numsites, pseudocount):
 
 def normalisearray(pwm):
     """
-    Normalise an array, that is make every slice in the last dimension sum to 1.
+    Normalise an array, that is make every slice in the last dimension
+    sum to 1.
 
     .. doctest::
 
@@ -104,19 +108,20 @@ def normalisearray(pwm):
 
 
 def createpwmlikelihoodfn(pwm):
-    def baselikelihoodfn(w):
-        return pwm[w]
+    def baselikelihoodfn(it):
+        return pwm[it.repLength]
     return baselikelihoodfn
 
 
 def createpwmlikelihoodsquaredfn(pwm):
     pwmsquared = pwm ** 2
+
     def baselikelihoodfn(w):
         return pwmsquared[w]
     return baselikelihoodfn
 
 
-def bglikelihoodfn(w):
+def bglikelihoodfn(it):
     return UNIFORM0ORDER
 
 
@@ -124,6 +129,7 @@ def createZncalculatorFn(pwm, lambda_):
     """Create a function that calculates :math:`Z_n` from :math:`X_n`"""
     bsloglikelihoodfn = createloglikelihoodforpwmfn(pwm)
     lambdaratio = lambda_ / (1. - lambda_)
+
     def calculateZn(X):
         logodds = bsloglikelihoodfn(X) - uniform0orderloglikelihood(X)
         return 1./(1 + 1/(lambdaratio * npy.exp(logodds)))

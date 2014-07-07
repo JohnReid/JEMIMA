@@ -3,12 +3,11 @@
 #
 
 
-
 r"""
-In general when finding motifs we need to consider several different motif widths, W.
-When descending a suffix tree or array we typically need to know how many W-mers for
-a given W exist are descendants of the current iterator. The code in this module
-counts these W-mers.
+In general when finding motifs we need to consider several different motif
+widths, W.  When descending a suffix tree or array we typically need to know
+how many W-mers for a given W exist are descendants of the current iterator.
+The code in this module counts these W-mers.
 
 Counting example
 ----------------
@@ -57,8 +56,8 @@ Two 2-mers, one 3-mer and no 5-mers start with 'AC'.
     [2 1 0]
 
 
-Once we have the counts of W-mers for each node, we can calculate the frequencies
-of each possible subsequent base.
+Once we have the counts of W-mers for each node, we can calculate the
+frequencies of each possible subsequent base.
 
 .. doctest::
 
@@ -162,14 +161,14 @@ def countWmerChildren(it, W, counts, childcounts):
         - it: A top-down history iterator.
         - W: The maximum W.
         - counts: An array of shape (2*len(index), len(Ws)) of the counts.
-        - childcounts: An array of shape (2*len(index), len(Ws), 4) to store the
-            child counts in.
+        - childcounts: An array of shape (2*len(index), len(Ws), 4) to store
+            the child counts in.
 
     The childcounts array is typically initialised as::
 
         childcounts = numpy.zeros((2*len(index), len(Ws), 4))
     """
-    nodecounts = counts[it.value.id]
+    # nodecounts = counts[it.value.id]
     nodechild = childcounts[it.value.id]
     # Do we have to descend any further? Is our representative as long as
     # largest W?
@@ -177,9 +176,9 @@ def countWmerChildren(it, W, counts, childcounts):
         # Yes so go down and add up counts from child nodes
         if it.goDown():
             while True:
-                nodechild[:,it.parentEdgeLabel[0].ordValue] += counts[it.value.id]
+                nodechild[:, it.parentEdgeLabel[0].ordValue] += \
+                    counts[it.value.id]
                 countWmerChildren(it, W, counts, childcounts)
                 if not it.goRight():
                     break
             it.goUp()
-
