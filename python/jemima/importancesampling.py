@@ -75,11 +75,64 @@ import logging
 logger = logging.getLogger(__name__)
 
 import time
-import pandas as pd
 import numpy as npy
 import numpy.random as rdm
 
-import jemima as jem
+from jemima import SIGMA, ALLBASES
+
+
+class VarianceOnline(object):
+    """Calculate variance in an online fashion. From
+    http://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Incremental_algorithm
+    """
+
+    def __init__(self):
+        self.n = 0
+        self.mean = 0
+        self.M2 = 0
+
+    def update(self, x):
+        self.n = self.n + 1
+        delta = x - self.mean
+        self.mean = self.mean + delta / self.n
+        self.M2 = self.M2 + delta*(x - self.mean)
+
+    def calculate(self):
+        if self.n < 2:
+            return 0
+        return self.M2 / (self.n - 1)
+
+
+class VarianceOnlineMulti(VarianceOnline):
+    """Calculate variance in an online fashion for multiple elements of
+    an array. From
+    http://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Incremental_algorithm
+    """
+
+    def __init__(self, W):
+        self.n = 0
+        self.mean = npy.zeros((W, SIGMA))
+        self.M2 = npy.zeros((W, SIGMA))
+
+    def update(self, x):
+        self.n = self.n + 1
+        delta = x - self.mean
+        self.mean = self.mean + delta / self.n
+        self.M2 = self.M2 + delta*(x - self.mean)
+
+    def calculate(self):
+        if self.n < 2:
+            return 0
+        return self.M2 / (self.n - 1)
+
+
+def arrayforXn(Xn, weight=1.):
+    r"""Return a :math:`(W, \Sigma)` shaped array for :math:`X_n` with ones
+    in the positions for the :math:`X_{n,w}` and zeros elsewhere."""
+    result = npy.zeros((len(Xn), SIGMA))
+    for w, base in enumerate(Xn):
+        result[w, base.ordValue] = weight
+    return result
 
 
 class ZnSumCb(object):
@@ -88,11 +141,44 @@ class ZnSumCb(object):
     """
 
     def __init__(self, W):
-        self.sums = npy.zeros((W, jem.SIGMA))
+        self.sums = npy.zeros((W, SIGMA))
+        self._variances = VarianceOnlineMulti(W)
 
-    def __call__(self, Xn, weightedZn):
-        for w, base in enumerate(Xn):
-            self.sums[w, base.ordValue] += weightedZn
+    def __call__(self, Xnarray):
+        self.sums += Xnarray
+        self._variances.update(Xnarray)
+
+    def variances(self):
+        return self._variances.calculate() * self._variances.n
+
+
+class ISCbAdaptor(object):
+    """
+    Importance sampling callback to sum :math:`Z_n`
+    """
+
+    def __init__(self, cb):
+        self.cb = cb
+
+    def __call__(self, Xn, Zn, importanceratio):
+        self.cb(arrayforXn(Xn, Zn * importanceratio))
+
+
+class ISMemoCbAdaptor(ISCbAdaptor):
+    """
+    Wraps an importance sampling callback to remember each
+    individual :math:`Z_n` and importance ratio.
+    """
+
+    def __init__(self, cb):
+        super(ISMemoCbAdaptor, self).__init__(cb)
+        self.Zns = []
+        self.irs = []
+
+    def __call__(self, Xn, Zn, importanceratio):
+        self.Zns.append(Zn)
+        self.irs.append(importanceratio)
+        super(ISMemoCbAdaptor, self).__call__(Xn, Zn, importanceratio)
 
 
 class ZnCalcVisitor(object):
@@ -112,7 +198,7 @@ class ZnCalcVisitor(object):
             # Calculate Zn
             Zn = self.Zncalculator(Xn)
             # Update sums
-            self.cb(Xn, Zn * it.numOccurrences)
+            self.cb(arrayforXn(Xn, Zn * it.numOccurrences))
             # Have gone deep enough in index, truncate traversal
             return False
         else:
@@ -164,7 +250,7 @@ class ImportanceSampler(object):
             p /= p.sum()
             # logger.info('%-10s: %s', representative, samplingdist)
             # Sample one of the bases
-            sample = rdm.choice(jem.ALLBASES, p=p)
+            sample = rdm.choice(ALLBASES, p=p)
             # Descend the sample
             wentDown = it.goDown(sample)
             assert wentDown
@@ -174,63 +260,13 @@ class ImportanceSampler(object):
             return self(it, lr * likelihoodratioupdate)
 
 
-class VarianceOnline(object):
-    """Calculate variance in an online fashion. From
-    http://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Incremental_algorithm
-    """
-
-    def __init__(self):
-        self.n = 0
-        self.mean = 0
-        self.M2 = 0
-
-    def update(self, x):
-        self.n = self.n + 1
-        delta = x - self.mean
-        self.mean = self.mean + delta / self.n
-        self.M2 = self.M2 + delta*(x - self.mean)
-
-    def calculate(self):
-        if self.n < 2:
-            return 0
-        return self.M2 / (self.n - 1)
-
-
-class ISSumCb(object):
-    """
-    Importance sampling callback to sum :math:`Z_n`
-    """
-
-    def __init__(self, W):
-        self.summer = ZnSumCb(W)
-
-    def __call__(self, Xn, Zn, likelihoodratio):
-        self.summer(Xn, Zn * likelihoodratio)
-
-
-class ISMemoCbWrapper(object):
-    """
-    Wraps an importance sampling callback to remember each
-    individual :math:`Z_n` and likelihood ratio.
-    """
-
-    def __init__(self, cb):
-        self.cb = cb
-        self.Zns = []
-        self.lrs = []
-
-    def __call__(self, Xn, Zn, likelihoodratio):
-        self.Zns.append(Zn)
-        self.lrs.append(likelihoodratio)
-        self.cb(Xn, Zn, likelihoodratio)
-
-
 def importancesample(
         index, W, phi, psi,
-        Zncalculator, numsamples, **kwargs):
+        Zncalculator, numsamples):
+    # Record start time
     start = time.time()
     # Set up sampler
-    iscb = ISMemoCbWrapper(ISSumCb(W))
+    iscb = ISMemoCbAdaptor(ZnSumCb(W))
     sampler = ImportanceSampler(W, phi, psi)
     # Sample
     for _ in xrange(numsamples):
@@ -240,18 +276,11 @@ def importancesample(
         Zn = Zncalculator(Xn)
         # Callback
         iscb(Xn, Zn, lr)
-    # Create data frame
-    kwargs.update({
-        'Z' : iscb.Zns,
-        'lr': iscb.lrs,
-    })
-    df = pd.DataFrame(kwargs)
-    df['Zweighted'] = df['Z'] * df['lr']
     duration = time.time() - start
     logger.info(
         'Took %.3fs to sample %d samples at a rate of %.1f samples/sec',
         duration, numsamples, numsamples / duration)
-    return df, iscb
+    return iscb
 
 
 def estimatesum(weightedZ, numWmers):

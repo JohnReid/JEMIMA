@@ -80,20 +80,41 @@ wmers.countWmerChildren(index.topdownhistory(), W, Wmercounts, childWmerfreqs)
 childWmerfreqs = jem.normalisearray(childWmerfreqs)
 sumestimator = jis.makesumestimator(numWmers)
 
+
+def makedf(iscb, **kwargs):
+    # Create data frame
+    kwargs.update({
+        'Z' : iscb.Zns,
+        'ir': iscb.irs,
+    })
+    df = pd.DataFrame(kwargs)
+    df['Zweighted'] = df['Z'] * df['ir']
+    return df
+
+
+import jemima
+reload(jemima)
+import jemima.importancesampling
+reload(jemima.importancesampling)
+import jemima as jem
+import jemima.importancesampling as jis
 numsamples = 3000
 rdm.seed(1)
 logging.info('Importance sampling using binding site model')
-samplebs, cbbs = jis.importancesample(
+cbbs = jis.importancesample(
     index, W, childWmerfreqs[:, 0], jem.createpwmlikelihoodfn(runx1withpc),
-    calculateZn, numsamples, model='BS')
+    calculateZn, numsamples)
+samplebs = makedf(cbbs, model='BS')
+logging.info('Variances:\n%s', cbbs.cb.variances())
 # logging.info('Importance sampling using binding site model squared')
 # samplebs2, cbbs2 = importancesample(
 #    createpwmlikelihoodsquaredfn(runx1withpc), W, childWmerfreqs[:,0],
 #    calculateZn, numsamples, model='BS2')
 logging.info('Importance sampling using background model')
-samplebg, cbbg = jis.importancesample(
+cbbg = jis.importancesample(
     index, W, childWmerfreqs[:, 0], jem.bglikelihoodfn,
-    calculateZn, numsamples, model='BG')
+    calculateZn, numsamples)
+samplebg = makedf(cbbg, model='BG')
 # samples = pd.concat((samplebs, samplebs2, samplebg))
 samples = pd.concat((samplebs, samplebg))
 # Need unique indices for conversion to R dataframe
@@ -110,8 +131,8 @@ logging.info('Estimates:\n%s',
 logging.info('True sum: %s', trueZnsum)
 
 # Examine how close each estimate of the pwm was
-pwmbs = jem.normalisearray(cbbs.cb.summer.sums)
-pwmbg = jem.normalisearray(cbbg.cb.summer.sums)
+pwmbs = jem.normalisearray(cbbs.cb.sums)
+pwmbg = jem.normalisearray(cbbg.cb.sums)
 pwmtrue = jem.normalisearray(summer.sums)
 logging.info('BS PWM distance/base: %f',
              npy.linalg.norm(pwmtrue - pwmbs, ord=1) / W)
@@ -137,7 +158,7 @@ grdevices.png(file="sampled-ratios.png",
               width=4, height=3, units="in", res=300)
 rsamplesbs = com.convert_to_r_dataframe(samples[samples['model'] == 'BS'])
 pp = ggplot2.ggplot(rsamplesbs) + \
-    ggplot2.aes_string(x='lr') + \
+    ggplot2.aes_string(x='ir') + \
     ggplot2.geom_density() + \
     ggplot2.scale_x_log10()
 pp.plot()
