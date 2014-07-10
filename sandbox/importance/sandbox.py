@@ -31,9 +31,23 @@ import rpy2.robjects.lib.ggplot2 as ggplot2
 from rpy2.robjects.packages import importr
 grdevices = importr('grDevices')
 
-lambda_ = .01
-numsites = 50
+
+def makedf(iscb, Zncalculator, **kwargs):
+    """Make a pandas data frame containing the Zs and importance ratios
+    from the callback."""
+    # Create data frame
+    kwargs.update({
+        'Z' : map(Zncalculator, iscb.Xns),
+        'ir': iscb.irs,
+    })
+    df = pd.DataFrame(kwargs)
+    df['Zweighted'] = df['Z'] * df['ir']
+    return df
+
+
+numseedsites = 20
 pseudocount = 1.
+W = 11
 runx1pwm = npy.array((
     (0.384615,  0.076923,  0.115385,  0.423077),
     (0.461538,  0.076923,  0.038462,  0.423077),
@@ -47,28 +61,19 @@ runx1pwm = npy.array((
     (0.307692,  0.076923,  0.000000,  0.615385),
     (0.500000,  0.076923,  0.153846,  0.269231),
 ))
-runx1withpc = jem.addpseudocounts(runx1pwm, numsites, pseudocount)
-W = len(runx1withpc)
-
-# logo(runx1pwm, 'runx1')
-# logo(runx1withpc, 'runx1-pc')
+runx1withpc = jem.addpseudocounts(runx1pwm, numseedsites, pseudocount)
+assert W == len(runx1withpc)
+# jem.logo(runx1pwm, 'runx1')
+# jem.logo(runx1withpc, 'runx1-pc')
 
 logging.info('Loading sequences')
 # seqs = seqan.StringDNASet(('AAAAAAAA', 'ACGTACGT', 'TATATATA'))
 numbases, seqs, ids = seqan.readFastaDNA('T00759-small.fa')
+logging.info('Loaded %d bases from %d sequences', numbases, len(seqs))
+lambda_ = len(seqs) / float(numbases)
 
 logging.info('Building index')
 index = seqan.IndexStringDNASetESA(seqs)
-
-logging.info('Calculating true Zn sums')
-calculateZn = jem.createZncalculatorFn(runx1withpc, lambda_)
-summer = jis.ZnSumCb(W)
-sumvisitor = jis.ZnCalcVisitor(W, calculateZn, summer)
-seqan.traverse.topdownhistorytraversal(index.topdownhistory(), sumvisitor)
-logging.info('Sums:\n%s', summer.sums)
-trueZnsum = summer.sums[0].sum()
-logging.info('True sum: %s', trueZnsum)
-# logo(normalisearray(sumvisitor.sums), 'learnt')
 
 logging.info('Counting W-mers')
 Ws = [W]
@@ -80,64 +85,82 @@ wmers.countWmerChildren(index.topdownhistory(), W, Wmercounts, childWmerfreqs)
 childWmerfreqs = jem.normalisearray(childWmerfreqs)
 sumestimator = jis.makesumestimator(numWmers)
 
-
-def makedf(iscb, **kwargs):
-    # Create data frame
-    kwargs.update({
-        'Z' : iscb.Zns,
-        'ir': iscb.irs,
-    })
-    df = pd.DataFrame(kwargs)
-    df['Zweighted'] = df['Z'] * df['ir']
-    return df
-
-
-import jemima
-reload(jemima)
-import jemima.importancesampling
-reload(jemima.importancesampling)
-import jemima as jem
-import jemima.importancesampling as jis
-numsamples = 3000
+logging.info('Importance sampling using background model to find one seed')
 rdm.seed(1)
-logging.info('Importance sampling using binding site model')
-cbbs = jis.importancesample(
-    index, W, childWmerfreqs[:, 0], jem.createpwmlikelihoodfn(runx1withpc),
-    calculateZn, numsamples)
-samplebs = makedf(cbbs, model='BS')
-logging.info('Variances:\n%s', cbbs.cb.variances())
-# logging.info('Importance sampling using binding site model squared')
-# samplebs2, cbbs2 = importancesample(
-#    createpwmlikelihoodsquaredfn(runx1withpc), W, childWmerfreqs[:,0],
-#    calculateZn, numsamples, model='BS2')
-logging.info('Importance sampling using background model')
-cbbg = jis.importancesample(
+memocb = jis.importancesample(
     index, W, childWmerfreqs[:, 0], jem.bglikelihoodfn,
-    calculateZn, numsamples)
-samplebg = makedf(cbbg, model='BG')
-# samples = pd.concat((samplebs, samplebs2, samplebg))
-samples = pd.concat((samplebs, samplebg))
-# Need unique indices for conversion to R dataframe
-samples.index = npy.arange(len(samples))
-samplesgrouped = samples.groupby(['model'])
+    numsamples=1, callback=jis.ISCbMemo())
+pwm = jem.pwmfromWmer(memocb.Xns[0], numseedsites, 1.)
+pwmlikelihoodfn = jem.createpwmlikelihoodfn(pwm)
+calculateZn = jem.createZncalculatorFn(pwm, lambda_)
+jem.logo(pwm, 'seed')
 
-logging.info('Analysing variance')
-variances = samplesgrouped['Zweighted'].aggregate(npy.var)
-logging.info('Variances:\n%s', variances)
-logging.info('Variance ratio: %f', variances['BG'] / variances['BS'])
-logging.info('Estimate: %s', sumestimator(samples['Zweighted']))
-logging.info('Estimates:\n%s',
-             samplesgrouped['Zweighted'].aggregate(sumestimator))
-logging.info('True sum: %s', trueZnsum)
+numsamples = 3000
+distsbs = []
+distsbg = []
+truesums = []
+varratios = []
+for iteration in xrange(1):
+    logging.debug('Calculating true Zn sums')
+    summer = jis.ZnSumCb(W)
+    sumvisitor = jis.ZnCalcVisitor(W, calculateZn, summer)
+    seqan.traverse.topdownhistorytraversal(index.topdownhistory(), sumvisitor)
+    logging.debug('Sums:\n%s', summer.sums)
+    trueZnsum = summer.sums[0].sum()
+    truesums.append(trueZnsum)
+    logging.info('True sum: %s', trueZnsum)
 
-# Examine how close each estimate of the pwm was
-pwmbs = jem.normalisearray(cbbs.cb.sums)
-pwmbg = jem.normalisearray(cbbg.cb.sums)
-pwmtrue = jem.normalisearray(summer.sums)
-logging.info('BS PWM distance/base: %f',
-             npy.linalg.norm(pwmtrue - pwmbs, ord=1) / W)
-logging.info('BG PWM distance/base: %f',
-             npy.linalg.norm(pwmtrue - pwmbg, ord=1) / W)
+    logging.debug('Importance sampling using binding site model')
+    cbbs = jis.importancesample(
+        index, W, childWmerfreqs[:, 0], pwmlikelihoodfn,
+        numsamples, jis.ISMemoCbAdaptor(jis.ZnSumCb(W), calculateZn))
+    samplebs = makedf(cbbs, calculateZn, model='BS')
+    logging.debug('Variances:\n%s', cbbs.cb.variances())
+
+    logging.debug('Importance sampling using background model')
+    cbbg = jis.importancesample(
+        index, W, childWmerfreqs[:, 0], jem.bglikelihoodfn,
+        numsamples, jis.ISMemoCbAdaptor(jis.ZnSumCb(W), calculateZn))
+    samplebg = makedf(cbbg, calculateZn, model='BG')
+
+    # Examine how close each estimate of the pwm was
+    pwmbs = jem.normalisearray(cbbs.cb.sums)
+    pwmbg = jem.normalisearray(cbbg.cb.sums)
+    pwmtrue = jem.normalisearray(summer.sums)
+    lambda_ = trueZnsum / float(numbases)
+    calculateZn = jem.createZncalculatorFn(pwmtrue, lambda_)
+    pwmlikelihoodfn = jem.createpwmlikelihoodfn(pwmtrue)
+    distperbasebs = npy.linalg.norm(pwmtrue - pwmbs, ord=1) / W
+    distperbasebg = npy.linalg.norm(pwmtrue - pwmbg, ord=1) / W
+    distsbs.append(distperbasebs)
+    distsbg.append(distperbasebg)
+    logging.info('BS PWM distance/base: %f', distperbasebs)
+    logging.info('BG PWM distance/base: %f', distperbasebg)
+    jem.logo(pwmbs, '%04d-BS' % iteration)
+    jem.logo(pwmbg, '%04d-BG' % iteration)
+    jem.logo(pwmtrue, '%04d-true' % iteration)
+
+    logging.debug('Analysing variance')
+    samples = pd.concat((samplebs, samplebg))
+    # Need unique indices for conversion to R dataframe
+    samples.index = npy.arange(len(samples))
+    samplesgrouped = samples.groupby(['model'])
+    variances = samplesgrouped['Zweighted'].aggregate(npy.var)
+    # logging.info('Variances:\n%s', variances)
+    varianceratio = variances['BG'] / variances['BS']
+    varratios.append(varianceratio)
+    logging.info('Variance ratio: %f', varianceratio)
+    logging.debug('Estimate: %s', sumestimator(samples['Zweighted']))
+    logging.debug('Estimates:\n%s',
+                  samplesgrouped['Zweighted'].aggregate(sumestimator))
+    logging.debug('True sum: %s', trueZnsum)
+
+emdf = pd.DataFrame({
+    'BSdists' : distsbs,
+    'BGdists' : distsbg,
+    'truesums' : truesums,
+    'varratios' : varratios,
+})
 
 # Plot sampled Z
 logging.info('Plotting sampled Zn')

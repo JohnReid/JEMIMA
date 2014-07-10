@@ -18,10 +18,12 @@ LOGQUARTER = npy.log(.25)
 UNIFORM0ORDER = npy.ones(SIGMA) / SIGMA
 
 
-def logo(dist, tag, make_png=False, make_eps=True, write_title=True):
+def logo(dist, tag, make_png=True, make_eps=False, write_title=True):
     "Generate a logo named with the given tag."
-    import weblogolib as W
     import corebio.seq
+    import weblogolib as W
+    if tuple(map(int, W.__version__.split('.'))) < (3, 4):
+        raise ValueError('weblogolib version 3.4 or higher required')
     data = W.LogoData.from_counts(corebio.seq.unambiguous_dna_alphabet, dist)
     scale = 5.4 * 4
     options = W.LogoOptions(
@@ -36,9 +38,9 @@ def logo(dist, tag, make_png=False, make_eps=True, write_title=True):
     format_ = W.LogoFormat(data, options)
     filename = 'logo-%s' % tag
     if make_eps:
-        W.eps_formatter(data, format_, open('%s.eps' % filename, 'w'))
+        open('%s.eps' % filename, 'w').write(W.eps_formatter(data, format_))
     if make_png:
-        W.png_formatter(data, format_, open('%s.png' % filename, 'w'))
+        open('%s.png' % filename, 'w').write(W.png_formatter(data, format_))
 
 
 def uniform0orderloglikelihood(X):
@@ -59,6 +61,28 @@ def createloglikelihoodforpwmfn(pwm):
 def addpseudocounts(pwm, numsites, pseudocount):
     """Smooth a PWM by adding pseudo-counts."""
     return (pwm * numsites + pseudocount) / (numsites + pseudocount)
+
+
+def arrayforXn(Xn, weight=1.):
+    r"""Return a :math:`(W, \Sigma)` shaped array for :math:`X_n` with ones
+    in the positions for the :math:`X_{n,w}` and zeros elsewhere."""
+    result = npy.zeros((len(Xn), SIGMA))
+    for w, base in enumerate(Xn):
+        result[w, base.ordValue] = weight
+    return result
+
+
+def pwmfromWmer(Xn, N, pseudocount):
+    r"""Create a PWM, :math:`\theta`, from N copies of the word Xn
+    smoothed by the given pseudocount, :math:`b`.
+
+    .. math::
+
+        \theta_{w,b} = \frac{N \delta_{X_{n,w}=b} + b}{N+4b}
+    """
+    theta = arrayforXn(Xn, weight=N)
+    theta += pseudocount
+    return normalisearray(theta)
 
 
 def normalisearray(pwm):

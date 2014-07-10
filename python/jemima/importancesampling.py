@@ -38,7 +38,7 @@ the correct expectation but the variance of the estimator will be high as many
 of the :math:`Z_n` are tiny.  We can do much better using importance sampling.
 We sample from a distribution :math:`g(.)` which we choose to favour :math:`n`
 with large :math:`Z_n`. We can correct for sampling from the wrong distribution
-by reweighting with the ratio :math:`\frac{f(.)}{g(.)}`
+by reweighting with the importance ratio :math:`\frac{f(.)}{g(.)}`
 
 .. math::
 
@@ -78,7 +78,7 @@ import time
 import numpy as npy
 import numpy.random as rdm
 
-from jemima import SIGMA, ALLBASES
+from jemima import SIGMA, ALLBASES, arrayforXn
 
 
 class VarianceOnline(object):
@@ -126,15 +126,6 @@ class VarianceOnlineMulti(VarianceOnline):
         return self.M2 / (self.n - 1)
 
 
-def arrayforXn(Xn, weight=1.):
-    r"""Return a :math:`(W, \Sigma)` shaped array for :math:`X_n` with ones
-    in the positions for the :math:`X_{n,w}` and zeros elsewhere."""
-    result = npy.zeros((len(Xn), SIGMA))
-    for w, base in enumerate(Xn):
-        result[w, base.ordValue] = weight
-    return result
-
-
 class ZnSumCb(object):
     """
     Callback to sum :math:`Zn`
@@ -152,33 +143,49 @@ class ZnSumCb(object):
         return self._variances.calculate() * self._variances.n
 
 
+class ISCbMemo(object):
+    """
+    Importance sampling callback to remember :math:`X_n`s,
+    :math:`Z_n`s, and the importance ratios.
+    """
+
+    def __init__(self):
+        self.Xns = []
+        self.irs = []
+
+    def __call__(self, Xn, importanceratio):
+        self.Xns.append(Xn)
+        self.irs.append(importanceratio)
+
+
 class ISCbAdaptor(object):
     """
     Importance sampling callback to sum :math:`Z_n`
     """
 
-    def __init__(self, cb):
+    def __init__(self, cb, Zncalculator):
         self.cb = cb
+        self.Zncalculator = Zncalculator
 
-    def __call__(self, Xn, Zn, importanceratio):
-        self.cb(arrayforXn(Xn, Zn * importanceratio))
+    def __call__(self, Xn, importanceratio):
+        self.cb(arrayforXn(Xn, self.Zncalculator(Xn) * importanceratio))
 
 
 class ISMemoCbAdaptor(ISCbAdaptor):
     """
     Wraps an importance sampling callback to remember each
-    individual :math:`Z_n` and importance ratio.
+    individual :math:`X_n` and importance ratio.
     """
 
-    def __init__(self, cb):
-        super(ISMemoCbAdaptor, self).__init__(cb)
-        self.Zns = []
+    def __init__(self, cb, Zncalculator):
+        super(ISMemoCbAdaptor, self).__init__(cb, Zncalculator)
+        self.Xns = []
         self.irs = []
 
-    def __call__(self, Xn, Zn, importanceratio):
-        self.Zns.append(Zn)
+    def __call__(self, Xn, importanceratio):
+        self.Xns.append(Xn)
         self.irs.append(importanceratio)
-        super(ISMemoCbAdaptor, self).__call__(Xn, Zn, importanceratio)
+        super(ISMemoCbAdaptor, self).__call__(Xn, importanceratio)
 
 
 class ZnCalcVisitor(object):
@@ -235,11 +242,20 @@ class ImportanceSampler(object):
         self.phi = phi
         self.psi = psi
 
-    def __call__(self, it, lr=1.):
+    def __call__(self, it, ir=1.):
+        """Descend the index to sample a W-mer.
+
+        Args:
+            - it: iterator pointing to current node
+            - ir: current importance ratio
+
+        Returns an iterator pointing to the node for the sampled W-mer
+        and the importance ratio for the W-mer.
+        """
         w = it.repLength
         if w >= self.W:
             # Get the word
-            return it, lr
+            return it, ir
         else:
             # Get the frequency of each base after this prefix
             phi = self.phi[it.value.id]
@@ -257,30 +273,35 @@ class ImportanceSampler(object):
             # Calculate the updated likelihood ratio
             likelihoodratioupdate = phi[sample.ordValue] / p[sample.ordValue]
             # recurse
-            return self(it, lr * likelihoodratioupdate)
+            return self(it, ir * likelihoodratioupdate)
 
 
-def importancesample(
-        index, W, phi, psi,
-        Zncalculator, numsamples):
+def importancesample(index, W, phi, psi, numsamples, callback):
+    """Importance sample from the index given:
+
+        - *index*: The index to importance sample from.
+        - *W*: The width of the :math:`X_n` to sample.
+        - *phi*: :math:`\phi_{i,b}`, the frequency of base :math:`b` at
+          each node, :math:`i`.
+        - *psi*: :math:`\psi_{i,b}`, the importance weights for base
+          :math:`b` at node each node :math:`i`.
+        - *callback*: A callback to pass the samples to.
+    """
     # Record start time
     start = time.time()
     # Set up sampler
-    iscb = ISMemoCbAdaptor(ZnSumCb(W))
     sampler = ImportanceSampler(W, phi, psi)
     # Sample
     for _ in xrange(numsamples):
-        it, lr = sampler(index.topdownhistory())
+        it, ir = sampler(index.topdownhistory())
         Xn = it.representative[:W]
-        # Calculate Zn
-        Zn = Zncalculator(Xn)
         # Callback
-        iscb(Xn, Zn, lr)
+        callback(Xn, ir)
     duration = time.time() - start
     logger.info(
         'Took %.3fs to sample %d samples at a rate of %.1f samples/sec',
         duration, numsamples, numsamples / duration)
-    return iscb
+    return callback
 
 
 def estimatesum(weightedZ, numWmers):
