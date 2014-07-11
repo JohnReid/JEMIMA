@@ -77,8 +77,38 @@ logger = logging.getLogger(__name__)
 import time
 import numpy as npy
 import numpy.random as rdm
+import seqan
 
-from jemima import SIGMA, ALLBASES, arrayforXn
+from jemima import SIGMA, ALLBASES, arrayforXn, pwmrevcomp, \
+    UNIFORM0ORDER
+
+
+class PWMImportanceWeight(object):
+    """Standard importance weights for a PWM."""
+
+    def __init__(self, pwm):
+        self.pwm = pwm
+
+    def setorientation(self, positive):
+        if positive:
+            self.orientedpwm = self.pwm
+        else:
+            self.orientedpwm = pwmrevcomp(self.pwm)
+
+    def __call__(self, it):
+        """Return the importance weights for the correct column of the PWM."""
+        return self.orientedpwm[it.repLength]
+
+
+class UniformImportanceWeight(object):
+    """Uniform importance weights."""
+
+    def setorientation(self, positive):
+        pass
+
+    def __call__(self, it):
+        """Return the importance weights for the correct column of the PWM."""
+        return UNIFORM0ORDER
 
 
 class VarianceOnline(object):
@@ -293,8 +323,13 @@ def importancesample(index, W, phi, psi, numsamples, callback):
     sampler = ImportanceSampler(W, phi, psi)
     # Sample
     for _ in xrange(numsamples):
+        # Choose a random orientation for this sample
+        orientation = bool(rdm.randint(2))
+        psi.setorientation(orientation)
         it, ir = sampler(index.topdownhistory())
         Xn = it.representative[:W]
+        if not orientation:
+            Xn = seqan.StringDNA(str(Xn)).reversecomplement()
         # Callback
         callback(Xn, ir)
     duration = time.time() - start

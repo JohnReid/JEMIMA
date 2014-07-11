@@ -86,13 +86,11 @@ childWmerfreqs = jem.normalisearray(childWmerfreqs)
 sumestimator = jis.makesumestimator(numWmers)
 
 logging.info('Importance sampling using background model to find one seed')
-rdm.seed(1)
+rdm.seed(2)
 memocb = jis.importancesample(
-    index, W, childWmerfreqs[:, 0], jem.bglikelihoodfn,
+    index, W, childWmerfreqs[:, 0], jis.UniformImportanceWeight(),
     numsamples=1, callback=jis.ISCbMemo())
 pwm = jem.pwmfromWmer(memocb.Xns[0], numseedsites, 1.)
-pwmlikelihoodfn = jem.createpwmlikelihoodfn(pwm)
-calculateZn = jem.createZncalculatorFn(pwm, lambda_)
 jem.logo(pwm, 'seed')
 
 numsamples = 3000
@@ -100,9 +98,11 @@ distsbs = []
 distsbg = []
 truesums = []
 varratios = []
-for iteration in xrange(1):
+pwmtrue = pwm.copy()
+for iteration in xrange(5):
     logging.debug('Calculating true Zn sums')
     summer = jis.ZnSumCb(W)
+    calculateZn = jem.createZncalculatorFn(pwmtrue, lambda_)
     sumvisitor = jis.ZnCalcVisitor(W, calculateZn, summer)
     seqan.traverse.topdownhistorytraversal(index.topdownhistory(), sumvisitor)
     logging.debug('Sums:\n%s', summer.sums)
@@ -112,14 +112,14 @@ for iteration in xrange(1):
 
     logging.debug('Importance sampling using binding site model')
     cbbs = jis.importancesample(
-        index, W, childWmerfreqs[:, 0], pwmlikelihoodfn,
+        index, W, childWmerfreqs[:, 0], jis.PWMImportanceWeight(pwmtrue),
         numsamples, jis.ISMemoCbAdaptor(jis.ZnSumCb(W), calculateZn))
     samplebs = makedf(cbbs, calculateZn, model='BS')
     logging.debug('Variances:\n%s', cbbs.cb.variances())
 
     logging.debug('Importance sampling using background model')
     cbbg = jis.importancesample(
-        index, W, childWmerfreqs[:, 0], jem.bglikelihoodfn,
+        index, W, childWmerfreqs[:, 0], jis.UniformImportanceWeight(),
         numsamples, jis.ISMemoCbAdaptor(jis.ZnSumCb(W), calculateZn))
     samplebg = makedf(cbbg, calculateZn, model='BG')
 
@@ -128,8 +128,6 @@ for iteration in xrange(1):
     pwmbg = jem.normalisearray(cbbg.cb.sums)
     pwmtrue = jem.normalisearray(summer.sums)
     lambda_ = trueZnsum / float(numbases)
-    calculateZn = jem.createZncalculatorFn(pwmtrue, lambda_)
-    pwmlikelihoodfn = jem.createpwmlikelihoodfn(pwmtrue)
     distperbasebs = npy.linalg.norm(pwmtrue - pwmbs, ord=1) / W
     distperbasebg = npy.linalg.norm(pwmtrue - pwmbg, ord=1) / W
     distsbs.append(distperbasebs)

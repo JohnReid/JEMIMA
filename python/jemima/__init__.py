@@ -52,9 +52,16 @@ def uniform0orderloglikelihood(X):
 def createloglikelihoodforpwmfn(pwm):
     """Create a function that computes the log likelihood for the pwm."""
     logpwm = npy.log(pwm)
+    logpwmrev = logpwm[::-1]
 
     def loglikelihood(X):
-        return sum(logpwm[w, base.ordValue] for w, base in enumerate(X))
+        return npy.log(
+            .5 * npy.exp(
+                sum(logpwmrev[w, base.ordValue] for w, base in enumerate(X)))
+            +
+            .5 * npy.exp(
+                sum(logpwm[w, base.ordValue] for w, base in enumerate(X)))
+        )
     return loglikelihood
 
 
@@ -131,22 +138,9 @@ def normalisearray(pwm):
     return (pwm.T / pwm.sum(axis=-1).T).T
 
 
-def createpwmlikelihoodfn(pwm):
-    def baselikelihoodfn(it):
-        return pwm[it.repLength]
-    return baselikelihoodfn
-
-
-def createpwmlikelihoodsquaredfn(pwm):
-    pwmsquared = pwm ** 2
-
-    def baselikelihoodfn(w):
-        return pwmsquared[w]
-    return baselikelihoodfn
-
-
-def bglikelihoodfn(it):
-    return UNIFORM0ORDER
+def pwmrevcomp(pwm):
+    """Return the reverse complement of the PWM."""
+    return pwm[::-1, ::-1]
 
 
 def createZncalculatorFn(pwm, lambda_):
