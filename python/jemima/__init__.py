@@ -12,10 +12,67 @@ importance sampling.
 import seqan
 import numpy as npy
 
-ALLBASES = tuple(map(seqan.DNA, 'ACGT'))
+Base = seqan.DNA5
+String = seqan.StringDNA5
+UNKNOWNBASE = Base('N')
+ALLBASES = tuple(map(Base, 'ACGT'))
 SIGMA = len(ALLBASES)
 LOGQUARTER = npy.log(.25)
 UNIFORM0ORDER = npy.ones(SIGMA) / SIGMA
+
+
+def parentEdgeLabelUpToW(it, W):
+    """Return the parent edge label of the iterator but only
+    as far as the W'th base in the representative."""
+    surplus = it.repLength - W
+    if surplus <= 0:
+        return it.parentEdgeLabel
+    else:
+        return it.parentEdgeLabel[:-surplus]
+
+
+def findfirstparentunknown(it, maxW=None):
+    """Find the first unknown in the parent edge label of this iterator.
+    The parent edge label is searched only as far as the maxW'th
+    position in it.representative. If no maxW is given, it is set to
+    it.repLength.
+    The position of the first unknown is returned as an index into
+    it.representative, not it.parentEdgeLabel.
+    If no unknown is found, it.repLength is returned."""
+    if maxW is None:
+        maxW = it.repLength
+    if it.isRoot:
+        return 0
+    else:
+        for w, b in enumerate(parentEdgeLabelUpToW(it, maxW)):
+            if UNKNOWNBASE == b:
+                return it.repLength - it.parentEdgeLength + w
+        else:
+            return it.repLength
+
+
+def informationcontent(pwm, bgfreqs):
+    """The information content of a PWM in bits.
+
+    Args:
+        - *bgfreqs*: The background frequencies of each
+            base :math:`b`, :math:`f_b`.
+        - *pwm*: The frequencies of each base, :math:`b`
+            at each position, :math:`w` in the PWM,
+            :math:`\theta_{w,b}`.
+
+    Returns the information content of a PWM:
+
+    .. math::
+
+        \sum_w \theta_{w,b} \log \frac{\theta_{w,b}}{f_b}
+    """
+    return (pwm * (npy.log2(pwm) - npy.log2(bgfreqs))).sum()
+
+
+def pwmKL(pwm1, pwm2):
+    """The Kullback-Leibler divergence between two PWMs in bits."""
+    return (pwm1 * (npy.log2(pwm1) - npy.log2(pwm2))).sum()
 
 
 def logo(dist, tag, make_png=True, make_eps=False, write_title=True):
@@ -52,15 +109,15 @@ def uniform0orderloglikelihood(X):
 def createloglikelihoodforpwmfn(pwm):
     """Create a function that computes the log likelihood for the pwm."""
     logpwm = npy.log(pwm)
-    logpwmrev = logpwm[::-1]
+    logpwmrevcomp = pwmrevcomp(logpwm)
 
     def loglikelihood(X):
         return npy.log(
-            .5 * npy.exp(
-                sum(logpwmrev[w, base.ordValue] for w, base in enumerate(X)))
+            .5 * npy.exp(sum(logpwmrevcomp[w, base.ordValue]
+                             for w, base in enumerate(X)))
             +
-            .5 * npy.exp(
-                sum(logpwm[w, base.ordValue] for w, base in enumerate(X)))
+            .5 * npy.exp(sum(logpwm[w, base.ordValue]
+                             for w, base in enumerate(X)))
         )
     return loglikelihood
 

@@ -21,7 +21,7 @@ for some set :math:`T`. STEME approximates these sums by ignoring those
         \approx \sum_{n \in T_\delta} \langle Z_n \rangle
 
 where :math:`T_\delta = \{n : Z_n \ge \delta \}`. STEME iterates efficiently
-over the :math:`n` with large :math:`Z_n`.
+over the :math:`n` with large :math:`langle Z_n \rangle`.
 
 Another way to estimate these sums is sampling. Suppose :math:`f(n)`
 is a uniform distribution over :math:`T`, then
@@ -35,10 +35,11 @@ is a uniform distribution over :math:`T`, then
 
 where :math:`n_k \sim f(.)`. Sampling :math:`n` from :math:`f(.)` may give us
 the correct expectation but the variance of the estimator will be high as many
-of the :math:`Z_n` are tiny.  We can do much better using importance sampling.
-We sample from a distribution :math:`g(.)` which we choose to favour :math:`n`
-with large :math:`Z_n`. We can correct for sampling from the wrong distribution
-by reweighting with the importance ratio :math:`\frac{f(.)}{g(.)}`
+of the :math:`\langle Z_n \rangle` are tiny.  We can do much better using
+importance sampling.  We sample from a distribution :math:`g(.)` which we
+choose to favour :math:`n` with large :math:`\langle Z_n \rangle`. We can
+correct for sampling from the wrong distribution by reweighting with the
+importance ratio :math:`\frac{f(.)}{g(.)}`
 
 .. math::
 
@@ -75,12 +76,12 @@ import logging
 logger = logging.getLogger(__name__)
 
 import time
+import itertools
 import numpy as npy
 import numpy.random as rdm
-import seqan
 
 from jemima import SIGMA, ALLBASES, arrayforXn, pwmrevcomp, \
-    UNIFORM0ORDER
+    UNIFORM0ORDER, UNKNOWNBASE, String, parentEdgeLabelUpToW
 
 
 class PWMImportanceWeight(object):
@@ -175,8 +176,8 @@ class ZnSumCb(object):
 
 class ISCbMemo(object):
     """
-    Importance sampling callback to remember :math:`X_n`s,
-    :math:`Z_n`s, and the importance ratios.
+    Importance sampling callback to remember :math:`X_n`,
+    :math:`Z_n`, and the importance ratios.
     """
 
     def __init__(self):
@@ -217,6 +218,13 @@ class ISMemoCbAdaptor(ISCbAdaptor):
         self.irs.append(importanceratio)
         super(ISMemoCbAdaptor, self).__call__(Xn, importanceratio)
 
+    def var(self):
+        """Calculate the variance of the Zn estimates."""
+        return npy.var(map(
+            float.__mul__,
+            self.irs,
+            itertools.imap(self.Zncalculator, self.Xns)))
+
 
 class ZnCalcVisitor(object):
     """
@@ -229,6 +237,12 @@ class ZnCalcVisitor(object):
         self.cb = cb
 
     def __call__(self, it):
+        # Always go further than the root
+        if 0 == it.repLength:
+            return True
+        # Don't go any further if we have an unknown base
+        if UNKNOWNBASE in parentEdgeLabelUpToW(it, self.W):
+            return False
         if it.repLength >= self.W:
             # Get the word
             Xn = it.representative[:self.W]
@@ -289,6 +303,7 @@ class ImportanceSampler(object):
         else:
             # Get the frequency of each base after this prefix
             phi = self.phi[it.value.id]
+            assert npy.abs(1 - phi.sum()) < 1e-7  # Check is proper dist.
             # Get the importance weights
             psi = self.psi(it)
             # combine with Wmer frequencies to create sampling distribution
@@ -300,10 +315,10 @@ class ImportanceSampler(object):
             # Descend the sample
             wentDown = it.goDown(sample)
             assert wentDown
-            # Calculate the updated likelihood ratio
-            likelihoodratioupdate = phi[sample.ordValue] / p[sample.ordValue]
+            # Calculate the updated importance ratio
+            importanceratioupdate = phi[sample.ordValue] / p[sample.ordValue]
             # recurse
-            return self(it, ir * likelihoodratioupdate)
+            return self(it, ir * importanceratioupdate)
 
 
 def importancesample(index, W, phi, psi, numsamples, callback):
@@ -325,11 +340,12 @@ def importancesample(index, W, phi, psi, numsamples, callback):
     for _ in xrange(numsamples):
         # Choose a random orientation for this sample
         orientation = bool(rdm.randint(2))
+        orientation = True
         psi.setorientation(orientation)
         it, ir = sampler(index.topdownhistory())
         Xn = it.representative[:W]
         if not orientation:
-            Xn = seqan.StringDNA(str(Xn)).reversecomplement()
+            Xn = String(str(Xn)).reversecomplement()
         # Callback
         callback(Xn, ir)
     duration = time.time() - start

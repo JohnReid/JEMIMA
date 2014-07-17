@@ -16,16 +16,16 @@ Counting example
 
     >>> import jemima.wmers
     >>> import numpy
-    >>> import seqan
+    >>> import seqan.traverse
 
 Build an index from some short sequences.
 
 .. doctest::
 
-    >>> seqs = seqan.StringDNASet(('ACGT', 'AAAAA', 'AAGG', 'AAGG', 'AC'))
-    >>> index = seqan.IndexStringDNASetESA(seqs)
+    >>> seqs = seqan.StringDNA5Set(('ACGT', 'AAAAA', 'AAGG', 'AAGG', 'AC', 'AGNNCCC'))
+    >>> index = seqan.IndexStringDNA5SetESA(seqs)
 
-Count W-mers of lengths 2, 3 and 5 (we should have fourteen 2-mers, nine 3-mers
+Count W-mers of lengths 2, 3 and 5 (we should have seventeen 2-mers, ten 3-mers
 and one 5-mer).
 
 .. doctest::
@@ -33,7 +33,7 @@ and one 5-mer).
     >>> Ws = [2, 3, 5]
     >>> counts = numpy.zeros(((2*len(index)), len(Ws)), dtype=numpy.uint)
     >>> print jemima.wmers.countWmersMulti(index.topdownhistory(), Ws, counts)
-    [14  9  1]
+    [17 10  1]
 
 Six 2-mers, five 3-mers and one 5-mer start with 'AA'
 
@@ -63,7 +63,7 @@ frequencies of each possible subsequent base.
 
     >>> childcounts = numpy.zeros(((2*len(index)), len(Ws), 4))
     >>> jemima.wmers.countWmerChildren(
-    ...     index.topdownhistory(), Ws[:-1], counts, childcounts)
+    ...     index.topdownhistory(), Ws, counts, childcounts)
 
 Examine the distribution of bases in all W-mers (for W=2, 3 and 5) after the
 prefix 'AA'
@@ -85,6 +85,7 @@ of the 2-mers starting with 'AA' are followed by 'G'.
 
 
 import bisect
+from . import UNKNOWNBASE, parentEdgeLabelUpToW, findfirstparentunknown
 
 
 def countWmers(it, W, counts):
@@ -110,7 +111,8 @@ def countWmers(it, W, counts):
         count = 0
         if it.goDown():
             while True:
-                count += countWmers(it, W, counts)
+                if UNKNOWNBASE not in parentEdgeLabelUpToW(it, W):
+                    count += countWmers(it, W, counts)
                 if not it.goRight():
                     break
             it.goUp()
@@ -119,27 +121,15 @@ def countWmers(it, W, counts):
 
 
 def countWmersMulti(it, Ws, counts):
-    """
-    Count how many W-mers are descendants of this iterator for multiple Ws.
-
-    Args:
-        - it: A top-down history iterator.
-        - Ws: A sorted sequence of widths for which counts are desired.
-        - counts: An array of shape (2*len(index), W) to add the counts in.
-
-    The counts array is typically initialised as::
-
-        counts = numpy.zeros((2*len(index), len(Ws)))
-
-    and is indexed by::
-
-        counts[it.value.id, W]
-    """
+    """Count all the W-mers below the iterator for the given
+    widths, Ws."""
     nodecounts = counts[it.value.id]
+    maxW = Ws[-1]
+    firstunknown = findfirstparentunknown(it, maxW)
     # Do we have to descend any further? Is our representative as long as
-    # largest W?
-    if it.repLength < Ws[-1]:
-        # Yes so go down and add up counts from child nodes
+    # largest W? Did we find an unknown base?
+    if firstunknown == it.repLength and it.repLength < maxW:
+        # Yes we should descend so go down and add up counts from child nodes
         if it.goDown():
             while True:
                 nodecounts += countWmersMulti(it, Ws, counts)
@@ -147,13 +137,14 @@ def countWmersMulti(it, Ws, counts):
                     break
             it.goUp()
     # Determine which Ws our representative is longer than
-    longestWidx = bisect.bisect(Ws, it.repLength)
+    longestWidx = bisect.bisect(Ws, firstunknown)
     # Set those counts to number of occurrences
     nodecounts[:longestWidx] = it.numOccurrences
+    # print it.representative, longestWidx, it.numOccurrences, firstunknown, nodecounts
     return nodecounts
 
 
-def countWmerChildren(it, W, counts, childcounts):
+def countWmerChildren(it, Ws, counts, childcounts):
     """
     Count how many Wmers are descendants of each child of each node.
 
@@ -172,13 +163,14 @@ def countWmerChildren(it, W, counts, childcounts):
     nodechild = childcounts[it.value.id]
     # Do we have to descend any further? Is our representative as long as
     # largest W?
-    if it.repLength < W:
+    if it.repLength < Ws[-1]:
         # Yes so go down and add up counts from child nodes
         if it.goDown():
             while True:
-                nodechild[:, it.parentEdgeLabel[0].ordValue] += \
-                    counts[it.value.id]
-                countWmerChildren(it, W, counts, childcounts)
+                if UNKNOWNBASE != it.parentEdgeFirstChar:
+                    nodechild[:, it.parentEdgeFirstChar.ordValue] += \
+                        counts[it.value.id]
+                    countWmerChildren(it, Ws, counts, childcounts)
                 if not it.goRight():
                     break
             it.goUp()
