@@ -80,8 +80,8 @@ import itertools
 import numpy as npy
 import numpy.random as rdm
 
-from jemima import SIGMA, ALLBASES, arrayforXn, pwmrevcomp, \
-    UNIFORM0ORDER, UNKNOWNBASE, String, parentEdgeLabelUpToW
+from jemima import SIGMA, ALLBASES, arrayforXn, \
+    UNIFORM0ORDER, UNKNOWNBASE, parentEdgeLabelUpToW
 
 
 class PWMImportanceWeight(object):
@@ -90,15 +90,9 @@ class PWMImportanceWeight(object):
     def __init__(self, pwm):
         self.pwm = pwm
 
-    def setorientation(self, positive):
-        if positive:
-            self.orientedpwm = self.pwm
-        else:
-            self.orientedpwm = pwmrevcomp(self.pwm)
-
     def __call__(self, it):
         """Return the importance weights for the correct column of the PWM."""
-        return self.orientedpwm[it.repLength]
+        return self.pwm[it.repLength]
 
 
 class UniformImportanceWeight(object):
@@ -257,11 +251,74 @@ class ZnCalcVisitor(object):
             return True
 
 
+class IndexSample(object):
+    r"""
+    This class samples from a SeqAn index (e.g. a suffix tree or array)
+    to depth :math:`W` according to a given sampling distribution.
+    """
+
+    def __init__(self, W, sampling):
+        self.sampling = sampling
+        self.W = W
+
+    def __call__(self, it):
+        "Descend the tree to depth :math:`W` to sample a :math:`W`-mer."
+        if it.repLength >= self.W:
+            # Return the iterator referring to the W-mer
+            return it
+        else:
+            # Sample one of the bases
+            sample = self.sampling(it)
+            # Descend the sample
+            wentDown = it.goDown(sample)
+            assert wentDown
+            # Recurse
+            return self(it)
+
+
+class DistForFreqs(object):
+
+    def __init__(self, freqs):
+        self.freqs = freqs
+
+    def __call__(self, it):
+        return self.freqs[it.value.id]
+
+
+class WeightedSamplingDist(object):
+    r"""A weighted importance sampling distribution."""
+
+    def __init__(self, target, weights):
+        self.target = target
+        self.weights = weights
+
+    def reset(self):
+        self.ir = 1.
+
+    def __call__(self, it):
+        # The target distribution
+        target = self.target(it)
+        assert npy.abs(1 - target.sum()) < 1e-7  # Check is proper dist.
+        # Get the importance weights to adjust the target by
+        weights = self.weights(it)
+        # Combine with target to create sampling distribution
+        sampling = target * weights
+        sampling /= sampling.sum()
+        # logger.info('%-10s: %s', representative, samplingdist)
+        # Sample one of the bases
+        sample = rdm.choice(ALLBASES, p=sampling)
+        # Update the importance ratio
+        self.ir *= target[sample.ordValue] / sampling[sample.ordValue]
+        # Return the sampled base
+        return sample
+
+
 class ImportanceSampler(object):
 
-    r"""Importance sampler for :math:`\langle Z_n \rangle`.
-    This sampler descends a suffix tree (or other such index) to
-    depth :math:`W`.
+    r"""Importance sampler for a SeqAn index.
+    This sampler chooses a single path down a suffix tree
+    (or other such index) to depth :math:`W` to select a
+    :math:`W`-mer according to a given target distribution.
 
     At each node referenced by the iterator :math:`i`, the sampler chooses
     an edge to descend. An edge starting with base :math:`b` is descended
@@ -321,33 +378,28 @@ class ImportanceSampler(object):
             return self(it, ir * importanceratioupdate)
 
 
-def importancesample(index, W, phi, psi, numsamples, callback):
+def importancesample(index, W, sampling, numsamples, callback):
     """Importance sample from the index given:
 
         - *index*: The index to importance sample from.
         - *W*: The width of the :math:`X_n` to sample.
-        - *phi*: :math:`\phi_{i,b}`, the frequency of base :math:`b` at
-          each node, :math:`i`.
-        - *psi*: :math:`\psi_{i,b}`, the importance weights for base
-          :math:`b` at node each node :math:`i`.
+        - *sampling*: The inmportance sampling distribution.
+        - *numsamples*: How many samples.
         - *callback*: A callback to pass the samples to.
     """
     # Record start time
     start = time.time()
     # Set up sampler
-    sampler = ImportanceSampler(W, phi, psi)
+    sampler = IndexSample(W, sampling)
     # Sample
     for _ in xrange(numsamples):
-        # Choose a random orientation for this sample
-        orientation = bool(rdm.randint(2))
-        orientation = True
-        psi.setorientation(orientation)
-        it, ir = sampler(index.topdownhistory())
+        # Reset our importance sampling distribution
+        sampling.reset()
+        # Sample our W-mer
+        it = sampler(index.topdownhistory())
         Xn = it.representative[:W]
-        if not orientation:
-            Xn = String(str(Xn)).reversecomplement()
         # Callback
-        callback(Xn, ir)
+        callback(Xn, sampling.ir)
     duration = time.time() - start
     logger.info(
         'Took %.3fs to sample %d samples at a rate of %.1f samples/sec',
