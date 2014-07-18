@@ -27,12 +27,18 @@ import functools
 #
 parser = argparse.ArgumentParser(
     description='Evaluate importance sampling methods.')
-args = parser.parse_args(args=[])
+parser.add_argument(
+    '--numseeds', metavar='NUMSEEDS', type=int, default=48,
+    help='How many seeds to evaluate')
+parser.add_argument(
+    '--maxiters', metavar='MAXITERS', type=int, default=3,
+    help='Maximum number of EM iterations for each seed')
+args = parser.parse_args()
 args.rngseed = 1
 args.fastas = ['T00759-small.fa']
 args.Ws = (6, 8, 11, 14)
-args.numseeds = 1000
-args.maxiters = 15
+# args.numseeds = 40
+# args.maxiters = 2
 args.pseudocount = 1.
 args.stopthreshold = 1e-3  # Stopping threshold (distance per base)
 args.methods = [
@@ -41,6 +47,8 @@ args.methods = [
 ]
 args.writelogos = False
 args.parallel = True
+logger.info('Evaluating on %d seeds', args.numseeds)
+logger.info('Maximum EM iterations: %d', args.maxiters)
 
 
 #
