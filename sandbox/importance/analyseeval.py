@@ -28,7 +28,7 @@ alpha = .05
 plt.close('all')
 statsdf.plot(
     kind='scatter', x='KLtrueestimate', y='KLestimatetrue',
-    colors=methodcolors, alpha=alpha)
+    colors=methodcolors, alpha=alpha, loglog=True)
 upperlim = min(statsdf.KLtrueestimate.max(), statsdf.KLestimatetrue.max())
 lowerlim = max(statsdf.KLtrueestimate.min(), statsdf.KLestimatetrue.min())
 plt.plot([lowerlim, upperlim], [lowerlim, upperlim], 'k--')
