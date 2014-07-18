@@ -96,6 +96,6 @@ statsdf = pds.concat(map(pds.DataFrame, result))
 #
 # Save results
 #
-picklefilename = 'statsdf-%05d-%04d' % (args.numseeds, args.maxiters)
+picklefilename = 'statsdf-%05d-%04d.pkl' % (args.numseeds, args.maxiters)
 logger.info('Saving results to %s', picklefilename)
 statsdf.to_pickle(picklefilename)
