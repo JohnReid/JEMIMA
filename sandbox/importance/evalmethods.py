@@ -16,7 +16,6 @@ import jemima.wmers
 import jemima.evaluation
 
 import pandas as pds
-import numpy as npy
 import numpy.random as rdm
 import argparse
 import functools
@@ -67,21 +66,22 @@ if args.parallel:
     #
     # Initialise RNGs on each engine
     #
-    logger.info('Initialising engine RNGs.')
     def initrng(rngseed):
         import numpy.random
         numpy.random.seed(rngseed)
+
+    logger.info('Initialising engine RNGs.')
     for engineidx, engine in enumerate(rc):
         engine.apply(initrng, args.rngseed + engineidx)
 
+    #
+    # Pass work to engines
+    #
     @lview.parallel()
     def doseed(seedidx):
         import jemima.evaluation
         return jemima.evaluation.doseed(seedidx, args)
 
-    #
-    # Pass work to engines
-    #
     logger.info('Passing work to engines.')
     dview.push({'args': args})
     result = doseed.map(xrange(args.numseeds))
@@ -99,7 +99,7 @@ else:
 #
 # Combine results
 #
-statsdf = pds.concat(map(pds.DataFrame, result))
+statsdf = pds.concat(map(pds.DataFrame, result), ignore_index=True)
 
 #
 # Save results
