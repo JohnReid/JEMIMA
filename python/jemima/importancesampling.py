@@ -6,6 +6,89 @@
 
 
 r"""
+Oftentimes we are interested in sums of the form
+
+.. math::
+
+    S_T = \sum_{n \in T} \rho(n)
+
+Here :math:`T` is an index set, either over distinct occurrences of
+:math:`W`-mers or unique :math:`W`-mers. In either case these can
+efficiently be accessed using a suffix tree data structure.
+
+When :math:`\rho(n)` is small for many :math:`n`, evaluating this
+sum can be inefficient. The STEME motif finder tackled this problem
+by ignoring :math:`n` for which :math:`\rho(n) < \delta` for some
+threshold :math:`\delta`. Under certain conditions the error associated
+with this approximation can be bounded. However the savings
+made with this approximation diminish as :math:`W` grows. An alternative
+approximation is to estimate the sum using sampling. If :math:`f(n)` is
+a uniform distribution over :math:`T` then
+
+.. math::
+
+    S_T = |T| \big \langle \rho(n) \big \rangle_f
+
+which leads to the estimator
+
+.. math::
+
+    \hat{S}_T^f = |T| \rho(n) \qquad n \sim f(.)
+
+Unfortunately when many of the :math:`\rho(n)` are relatively small
+this estimator has a large variance. *Importance sampling* is one
+technique that can be used to reduce this variance. Importance
+sampling estimates the sum by focussing on the :math:`n` that
+have more influence on :math:`S_T`. Instead of sampling from :math:`f(.)`
+to estimate the sum, samples are drawn from an arbitrary distribution
+over the same space, :math:`g(.)`. The idea is that those :math:`n` with
+large :math:`\rho(n)` have high probability under :math:`g(.)`. We have
+
+.. math::
+
+    S_T = |T| \bigg \langle \frac{f(n)}{g(n)} \rho(n) \bigg \rangle_g
+
+This gives rise to the importance sampling estimator
+
+.. math::
+
+    \hat{S}_T^g = |T| \frac{f(n)}{g(n)} \rho(n) = \frac{\rho(n)}{g(n)}
+        \qquad n \sim g(.)
+
+
+Importance sampling with suffix arrays
+--------------------------------------
+
+Suffix arrays (and other data structures) can be used to iterate
+efficiently over all the :math:`W`-mers in a text. This iteration
+can take place at the level of the unique :math:`W`-mers
+in the text or at the level of their occurrences. For example,
+suppose :math:`W=5` and our text is 'AAAAAAC', then the unique :math:`W`-mers
+are 'AAAAA' and 'AAAAC'. The occurrences of 'AAAAA' start at position 0 and 1,
+and the occurrences of 'AAAAC' start at position 2.
+
+Let :math:`U = \{U_1, \dots, U_M\}` be the set of unique :math:`W`-mers
+in the text and :math:`V = \{V_1, \dots, V_N\}` be the set of their
+occurrences. Each :math:`U_m` (and each :math:`V_n`) is represented in a
+suffix tree (or array) as a unique path from the root. This path can be
+defined by the sequence of bases descended, :math:`B_m = b_{m,0} \dots
+b_{m, k_m}` where :math:`k_m` is the length of the path to :math:`U_m`.
+For example, the path to 'AAAAC' in the example above is AC, as the first
+A takes us to 'AAAA' where we could choose A or C, then C takes us
+to 'AAAAC'.
+
+With this in mind, we can define an importance sampling distribution
+:math:`g(.)` over :math:`U`, by defining a distribution :math:`g_v`
+over A, C, G and T for each vertex :math:`v` with representative length
+:math:`<W` in our suffix tree (or array). To sample from :math:`g(.)`
+we simply descend the tree, sampling according to :math:`g_v` as we
+descend. When constructing the :math:`g_v` we must be careful not to
+allow samples of bases for which no :math:`W`-mer exists in :math:`U`.
+
+
+Importance sampling for approximate EM
+--------------------------------------
+
 MEME's EM algorithm is dominated by calculations of the form
 
 .. math::
@@ -254,7 +337,12 @@ class ZnCalcVisitor(object):
 class IndexSample(object):
     r"""
     This class samples from a SeqAn index (e.g. a suffix tree or array)
-    to depth :math:`W` according to a given sampling distribution.
+    to depth :math:`W` according to a given target distribution.
+
+    The sampler starts at the root of the tree and descends by sampling
+    bases and descending until a representative of length :math:`W` has been
+    reached. The target distribution is provided as a function that
+    returns these samples given an iterator.
     """
 
     def __init__(self, W, sampling):
