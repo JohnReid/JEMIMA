@@ -72,7 +72,7 @@ in the text and :math:`V = \{V_1, \dots, V_N\}` be the set of their
 occurrences. Each :math:`U_m` (and each :math:`V_n`) is represented in a
 suffix tree (or array) as a unique path from the root. This path can be
 defined by the sequence of bases descended, :math:`B_m = b_{m,0} \dots
-b_{m, k_m}` where :math:`k_m` is the length of the path to :math:`U_m`.
+b_{m, k_m}` where :math:`k_m` is the length of the path.
 For example, the path to 'AAAAC' in the example above is AC, as the first
 A takes us to 'AAAA' where we could choose A or C, then C takes us
 to 'AAAAC'.
@@ -104,7 +104,7 @@ for some set :math:`T`. STEME approximates these sums by ignoring those
         \approx \sum_{n \in T_\delta} \langle Z_n \rangle
 
 where :math:`T_\delta = \{n : Z_n \ge \delta \}`. STEME iterates efficiently
-over the :math:`n` with large :math:`langle Z_n \rangle`.
+over the :math:`n` with large :math:`\langle Z_n \rangle`.
 
 Another way to estimate these sums is sampling. Suppose :math:`f(n)`
 is a uniform distribution over :math:`T`, then
