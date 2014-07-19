@@ -77,23 +77,37 @@ def buildindex(fasta):
     return index, bgfreqs / bgfreqs.sum()
 
 
+def _countWmers(index, Ws, countunique):
+    counts = npy.zeros((2*len(index), len(Ws)), dtype=npy.uint)
+    rootcounts = wmers.countWmersMulti(
+        index.topdownhistory(), Ws, counts, countUnique=countunique)
+    # Count how many W-mers are represented by the children
+    # of each node
+    childfreqs = npy.zeros((2*len(index), len(Ws), jem.SIGMA))
+    wmers.countChildren(
+        index.topdownhistory(), Ws, counts, childfreqs)
+    childfreqs = jem.normalisearray(childfreqs)
+    return rootcounts, counts, childfreqs
+
+
 @memoized
 def countWmers(fasta, Ws):
     """Count the W-mers in the sequences."""
     logger.info('Counting W-mers for: %s', fasta)
     index, bgfreqs = buildindex(fasta)
-    Wmercounts = npy.zeros((2*len(index), len(Ws)), dtype=npy.uint)
-    numWmers = wmers.countWmersMulti(
-        index.topdownhistory(), Ws, Wmercounts)
+    # Count W-mer occurrences
+    numWmers, Wmercounts, childWmerfreqs = \
+        _countWmers(index, Ws, countunique=False)
+    # Count unique W-mers
+    numunique, uniquecounts, childuniquefreqs = \
+        _countWmers(index, Ws, countunique=True)
+    # Log how many we have for each width
     for Widx, W in enumerate(Ws):
-        logger.info('Got %d %2d-mers', numWmers[Widx], W)
-    # Count how many W-mers are represented by the children
-    # of each node
-    childWmerfreqs = npy.zeros((2*len(index), len(Ws), jem.SIGMA))
-    wmers.countChildren(
-        index.topdownhistory(), Ws, Wmercounts, childWmerfreqs)
-    childWmerfreqs = jem.normalisearray(childWmerfreqs)
-    return numWmers, Wmercounts, childWmerfreqs
+        logger.info(
+            'Got %6d occurrences of %6d unique %2d-mers',
+            numWmers[Widx], numunique[Widx], W)
+    return numWmers, Wmercounts, childWmerfreqs, \
+        numunique, uniquecounts, childuniquefreqs
 
 
 SequencesData = collections.namedtuple(
@@ -108,6 +122,9 @@ SequencesData = collections.namedtuple(
         'numWmers',
         'Wmercounts',
         'childWmerfreqs',
+        'numunique',
+        'uniquecounts',
+        'childuniquefreqs',
     ])
 
 
@@ -115,7 +132,8 @@ SequencesData = collections.namedtuple(
 def getseqsdata(fasta, Ws):
     numbases, seqs, ids = loadfasta(fasta)
     index, bgfreqs = buildindex(fasta)
-    numWmers, Wmercounts, childWmerfreqs = countWmers(fasta, Ws)
+    numWmers, Wmercounts, childWmerfreqs, \
+        numunique, uniquecounts, childuniquefreqs = countWmers(fasta, Ws)
     return SequencesData(
         fasta=fasta,
         numbases=numbases,
@@ -126,6 +144,9 @@ def getseqsdata(fasta, Ws):
         numWmers=numWmers,
         Wmercounts=Wmercounts,
         childWmerfreqs=childWmerfreqs,
+        numunique=numunique,
+        uniquecounts=uniquecounts,
+        childuniquefreqs=childuniquefreqs,
     )
 
 
