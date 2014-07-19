@@ -20,6 +20,16 @@ import functools
 import time
 
 
+METHODS = dict()
+
+
+def samplingmethod(name):
+    def decorator(f):
+        METHODS[name] = f
+        return f
+    return decorator
+
+
 class memoized(object):
     '''Decorator. Caches a function's return value each time it is called.
     If called later with the same arguments, the cached value is returned
@@ -180,6 +190,7 @@ def dotrueiteration(seqsdata, W, pwm, lambda_):
     return summer
 
 
+@samplingmethod('PWMweights')
 def pwmweightsmethod(seqsdata, pwm, lambda_, Widx, numsamples, args):
     logger.debug('Importance sampling using PWM importance weights')
     calculateZn = jem.createZncalculatorFn(pwm, lambda_)
@@ -202,6 +213,7 @@ def pwmweightsmethod(seqsdata, pwm, lambda_, Widx, numsamples, args):
         cb)
 
 
+@samplingmethod('uniformweights')
 def uniformweightsmethod(seqsdata, pwm, lambda_, Widx, numsamples, args):
     logger.debug('Importance sampling using uniform weights')
     calculateZn = jem.createZncalculatorFn(pwm, lambda_)
@@ -309,9 +321,3 @@ def handleseed(seedidx, seqsdata, Widx, seed, args):
 def doseed(seedidx, args):
     seqsdata, Widx, seed = generateseed(args)
     return handleseed(seedidx, seqsdata, Widx, seed, args)
-
-
-METHODS = {
-    'PWMweights'     : pwmweightsmethod,
-    'uniformweights' : uniformweightsmethod,
-}
