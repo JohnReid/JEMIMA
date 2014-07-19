@@ -248,6 +248,7 @@ def handleseed(seedidx, seqsdata, Widx, seed, args):
             Znsumestimate = iscb.cb.sums[0].sum() * Zscale
             stats['fasta'].append(seqsdata.fasta)
             stats['seed'].append(str(seed))
+            stats['seedidx'].append(seedidx)
             stats['numseedsites'].append(numseedsites)
             stats['W'].append(W)
             stats['iteration'].append(iteration)
