@@ -34,7 +34,7 @@ and one 5-mer).
 
     >>> Ws = [2, 3, 5]
     >>> counts = numpy.zeros(((2*len(index)), len(Ws)), dtype=numpy.uint)
-    >>> print jemima.wmers.countOccsMulti(
+    >>> print jemima.wmers.countWmersMulti(
     ...     index.topdownhistory(), Ws, counts, countUnique=False)
     [17 10  1]
 
@@ -92,8 +92,9 @@ import bisect
 from . import UNKNOWNBASE, findfirstparentunknown
 
 
-def countOccsMulti(it, Ws, counts, countUnique=True):
-    """Count all the occurrences below the iterator for multiple widths, Ws.
+def countWmersMulti(it, Ws, counts, countUnique=True):
+    """Count all the occurrences (or unique W-mers)
+    below the iterator for multiple widths, Ws.
 
     Arguments:
         - *it*: The iterator below which to count occurrences.
@@ -113,7 +114,7 @@ def countOccsMulti(it, Ws, counts, countUnique=True):
         # Yes we should descend so go down and add up counts from child nodes
         if it.goDown():
             while True:
-                nodecounts += countOccsMulti(it, Ws, counts, countUnique)
+                nodecounts += countWmersMulti(it, Ws, counts, countUnique)
                 if not it.goRight():
                     break
             it.goUp()

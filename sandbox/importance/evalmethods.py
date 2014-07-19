@@ -28,6 +28,8 @@ import gzip
 parser = argparse.ArgumentParser(
     description='Evaluate importance sampling methods.')
 parser.add_argument(
+    "--parallel", help="Evaluate in parallel", action="store_true")
+parser.add_argument(
     '--numseeds', metavar='NUMSEEDS', type=int, default=48,
     help='How many seeds to evaluate')
 parser.add_argument(
@@ -46,7 +48,7 @@ args.methods = [
     'uniformweights',
 ]
 args.writelogos = False
-args.parallel = True
+# args.parallel = True
 logger.info('Evaluating on %d seeds', args.numseeds)
 logger.info('Maximum EM iterations: %d', args.maxiters)
 

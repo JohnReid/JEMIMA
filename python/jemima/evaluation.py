@@ -90,7 +90,7 @@ def countWmers(fasta, Ws):
     # Count how many W-mers are represented by the children
     # of each node
     childWmerfreqs = npy.zeros((2*len(index), len(Ws), jem.SIGMA))
-    wmers.countWmerChildren(
+    wmers.countChildren(
         index.topdownhistory(), Ws, Wmercounts, childWmerfreqs)
     childWmerfreqs = jem.normalisearray(childWmerfreqs)
     return numWmers, Wmercounts, childWmerfreqs
