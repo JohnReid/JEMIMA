@@ -19,6 +19,7 @@ import pandas as pds
 import numpy.random as rdm
 import argparse
 import functools
+import gzip
 
 
 #
@@ -104,6 +105,6 @@ statsdf = pds.concat(map(pds.DataFrame, result), ignore_index=True)
 #
 # Save results
 #
-picklefilename = 'statsdf-%05d-%04d.pkl' % (args.numseeds, args.maxiters)
-logger.info('Saving results to %s', picklefilename)
-statsdf.to_pickle(picklefilename)
+resultsfilename = 'statsdf-%05d-%04d.csv.gz' % (args.numseeds, args.maxiters)
+logger.info('Saving results to %s', resultsfilename)
+statsdf.to_csv(gzip.open(resultsfilename, 'wb'))
