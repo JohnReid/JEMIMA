@@ -193,11 +193,8 @@ class PWMImportanceWeightUnique(object):
 class UniformImportanceWeight(object):
     """Uniform importance weights."""
 
-    def setorientation(self, positive):
-        pass
-
     def __call__(self, it):
-        """Return the importance weights for the correct column of the PWM."""
+        """Return uniform importance weights."""
         return UNIFORM0ORDER
 
 
@@ -290,6 +287,7 @@ class ISCbAdaptor(object):
         self.unique = unique
 
     def __call__(self, it, importanceratio):
+        assert it.repLength >= self.W
         Xn = it.representative[:self.W]
         weight = self.Zncalculator(Xn) * importanceratio
         # If we are sampling unique W-mers rather than occurrences

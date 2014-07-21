@@ -38,7 +38,8 @@ parser.add_argument(
 parser.add_argument(
     '--maxiters', metavar='MAXITERS', type=int, default=3,
     help='Maximum number of EM iterations for each seed')
-args = parser.parse_args()
+# args = parser.parse_args()
+args = parser.parse_args(['--maxiters=1', '--numseeds=1'])
 args.rngseed = 1
 args.fastas = ['T00759-small.fa']
 args.Ws = (6, 8, 11, 14)
@@ -54,14 +55,16 @@ args.methods = [
 ]
 # args.writelogos = False
 # args.parallel = True
-logger.info('Evaluating on %d seeds', args.numseeds)
-logger.info('Maximum EM iterations: %d', args.maxiters)
+logger.info(
+    'Evaluating %d methods on %d seeds (up to %d iterations)',
+    len(args.methods), args.numseeds, args.maxiters)
 
 
 #
 # Choose whether to run parallel or not
 #
 if args.parallel:
+    logger.info('Evaluating in parallel')
     #
     # Initialise parallel
     #
@@ -98,8 +101,8 @@ else:
     #
     # Running locally
     #
+    logger.info('Evaluating locally.')
     rdm.seed(args.rngseed)
-    logger.info('Executing work locally.')
     result = map(
         functools.partial(jemima.evaluation.doseed, args=args),
         xrange(args.numseeds))

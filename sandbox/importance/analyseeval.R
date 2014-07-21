@@ -12,7 +12,7 @@ library(GGally)
 #
 # filename <- "statsdf-10000-0025.csv.gz"
 # filename <- "statsdf-00003-0005.csv.gz"
-filename <- "statsdf-00004-0010.csv.gz"
+filename <- "statsdf-00010-0020.csv.gz"
 # filename <- "statsdf-12000-0020.csv.gz"
 statsdf <- data.table(read.csv(gzfile(filename)), key=c("seed", "iteration"))
 method.names <- levels(statsdf$method)
@@ -24,6 +24,20 @@ if(! "seedidx" %in% names(statsdf)) {
 dim(statsdf)
 class(statsdf)
 sapply(statsdf, class)
+
+#
+# Check how accurate our Z estimates are
+#
+print statsdf %>%
+    group_by(method) %>%
+    summarise(mean(Znsumestimate / Znsumtrue), var(Znsumestimate / Znsumtrue))
+
+ggplot(
+    # filter(statsdf, method=="PWMoccs" | method=="uniformoccs"),
+    statsdf,
+    aes(x=method, y=Znsumestimate / Znsumtrue)) +
+    # scale_y_log10() +
+    geom_boxplot()
 
 #
 # Reshape data

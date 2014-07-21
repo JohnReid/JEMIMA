@@ -35,7 +35,7 @@ and one 5-mer).
     >>> Ws = [2, 3, 5]
     >>> counts = numpy.zeros(((2*len(index)), len(Ws)), dtype=numpy.uint)
     >>> print jemima.wmers.countWmersMulti(
-    ...     index.topdownhistory(), Ws, counts, countUnique=False)
+    ...     index.topdownhistory(), Ws, counts, countunique=False)
     [17 10  1]
 
 Six 2-mers, five 3-mers and one 5-mer start with 'AA'
@@ -92,7 +92,7 @@ import bisect
 from . import UNKNOWNBASE, findfirstparentunknown
 
 
-def countWmersMulti(it, Ws, counts, countUnique=True):
+def countWmersMulti(it, Ws, counts, countunique=True):
     """Count all the :math:`W`-mer occurrences (or unique W-mers)
     below the iterator for multiple widths, Ws.
 
@@ -100,8 +100,8 @@ def countWmersMulti(it, Ws, counts, countUnique=True):
         - *it*: The iterator below which to count occurrences.
         - *Ws*: The widths to count for.
         - *counts*: The counts array of shape
-            (2*len(index), len(Ws), jem.SIGMA)
-        - *countUnique*: If true, count the number of unique W-mers below
+            (2*len(index), len(Ws))
+        - *countunique*: If true, count the number of unique W-mers below
             each vertex for each width. Otherwise count the number of
             occurrences.
     """
@@ -114,7 +114,7 @@ def countWmersMulti(it, Ws, counts, countUnique=True):
         # Yes we should descend so go down and add up counts from child nodes
         if it.goDown():
             while True:
-                nodecounts += countWmersMulti(it, Ws, counts, countUnique)
+                nodecounts += countWmersMulti(it, Ws, counts, countunique)
                 if not it.goRight():
                     break
             it.goUp()
@@ -125,7 +125,7 @@ def countWmersMulti(it, Ws, counts, countUnique=True):
         Ws[:longestWidx],
         it.repLength - it.parentEdgeLength) or 0
     # Set those counts to number of occurrences
-    if countUnique:
+    if countunique:
         nodecounts[parentWidx:longestWidx] = 1
     else:
         nodecounts[parentWidx:longestWidx] = it.numOccurrences
@@ -163,3 +163,44 @@ def countChildren(it, Ws, counts, childcounts):
                 if not it.goRight():
                     break
             it.goUp()
+
+
+def _countUnique(seqs, Ws):
+    """Count unique W-mers in slow way for testing."""
+    from collections import defaultdict
+    unique = defaultdict(set)
+    for seq in seqs:
+        for W in Ws:
+            for pos in xrange(len(seq) - W + 1):
+                wmer = str(seq[pos:pos+W])
+                assert len(wmer) == W
+                if wmer.find('N') == -1:
+                    unique[W].add(wmer)
+    return unique
+
+
+def testUnique(seqs, Ws, prefixes=('ACA',)):
+    """Check we count the unique W-mers correctly by counting them in
+    an independent way."""
+    import seqan
+    import numpy as npy
+    from jemima.wmers import countWmersMulti
+    index = seqan.IndexStringDNA5SetESA(seqs)
+    counts = npy.zeros((2*len(index), len(Ws)), dtype=int)
+    numunique = countWmersMulti(
+        index.topdownhistory(), Ws, counts, countunique=True)
+    unique = _countUnique(seqs, Ws)
+    if (npy.array([len(unique[W]) for W in Ws]) != numunique).all():
+        raise ValueError('Counts did not match.')
+    for prefix in prefixes:
+        it = index.topdownhistory()
+        if not it.goDown(prefix):
+            raise ValueError('Prefix "%s" does not exist in text' % prefix)
+        for Widx, W in enumerate(Ws):
+            count1 = len(filter(
+                lambda wmer: wmer.startswith(prefix), unique[W]))
+            count2 = counts[it.value.id, Widx]
+            if count1 != count2:
+                raise ValueError(
+                    'Counts for "%s" did not match: %s != %s' % (
+                        prefix, count1, count2))

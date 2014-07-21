@@ -90,7 +90,7 @@ def buildindex(fasta):
 def _countWmers(index, Ws, countunique):
     counts = npy.zeros((2*len(index), len(Ws)), dtype=npy.uint)
     rootcounts = wmers.countWmersMulti(
-        index.topdownhistory(), Ws, counts, countUnique=countunique)
+        index.topdownhistory(), Ws, counts, countunique=countunique)
     # Count how many W-mers are represented by the children
     # of each node
     childfreqs = npy.zeros((2*len(index), len(Ws), jem.SIGMA))
@@ -205,7 +205,7 @@ def pwmoccsmethod(seqsdata, pwm, lambda_, Widx, numsamples, args):
             jis.PWMImportanceWeight(pwm)),
         numpositive,
         jis.ISMemoCbAdaptor(W, jis.ZnSumCb(W), calculateZn))
-    return jis.importancesample(
+    return seqsdata.numoccs[Widx], jis.importancesample(
         seqsdata.index,
         W,
         jis.WeightedSamplingDist(
@@ -222,7 +222,7 @@ def uniformoccsmethod(seqsdata, pwm, lambda_, Widx, numsamples, args):
     calculateZn = jem.createZncalculatorFn(pwm, lambda_)
     W = args.Ws[Widx]
     childoccfreqs = jis.DistForFreqs(seqsdata.childoccfreqs[:, Widx])
-    return jis.importancesample(
+    return seqsdata.numoccs[Widx], jis.importancesample(
         seqsdata.index,
         W,
         jis.WeightedSamplingDist(
@@ -247,7 +247,7 @@ def pwmuniquemethod(seqsdata, pwm, lambda_, Widx, numsamples, args):
             jis.PWMImportanceWeightUnique(pwm, childoccfreqs)),
         numpositive,
         jis.ISMemoCbAdaptor(W, jis.ZnSumCb(W), calculateZn, unique=True))
-    return jis.importancesample(
+    return seqsdata.numunique[Widx], jis.importancesample(
         seqsdata.index,
         W,
         jis.WeightedSamplingDist(
@@ -263,7 +263,7 @@ def uniformuniquemethod(seqsdata, pwm, lambda_, Widx, numsamples, args):
     calculateZn = jem.createZncalculatorFn(pwm, lambda_)
     W = args.Ws[Widx]
     childuniquefreqs = jis.DistForFreqs(seqsdata.childuniquefreqs[:, Widx])
-    return jis.importancesample(
+    return seqsdata.numunique[Widx], jis.importancesample(
         seqsdata.index,
         W,
         jis.WeightedSamplingDist(
@@ -299,7 +299,6 @@ def handleseed(seedidx, seqsdata, Widx, seed, args):
 
     for iteration in xrange(args.maxiters):
         numsamples = rdm.randint(max(1, numoccs / 10), numoccs / 2)
-        Zscale = float(numoccs) / numsamples
         pwmIC = jem.informationcontent(pwm, seqsdata.bgfreqs)
         summer = dotrueiteration(seqsdata, W, pwm, lambda_)
         logger.debug('Sums:\n%s', summer.sums)
@@ -319,11 +318,12 @@ def handleseed(seedidx, seqsdata, Widx, seed, args):
 
         for methodname in args.methods:
             start = time.time()
-            iscb = METHODS[methodname](
+            domainsize, iscb = METHODS[methodname](
                 seqsdata, pwm, lambda_, Widx, numsamples, args)
             duration = time.time() - start
             pwmestimate = jem.normalisearray(iscb.cb.sums)
-            Znsumestimate = iscb.cb.sums[0].sum() * Zscale
+            Znsumestimate = iscb.cb.sums[0].sum() * \
+                float(domainsize) / numsamples
             stats['fasta'].append(seqsdata.fasta)
             stats['seed'].append(str(seed))
             stats['seedidx'].append(seedidx)
