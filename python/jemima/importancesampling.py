@@ -258,11 +258,11 @@ class ISCbMemo(object):
     """
 
     def __init__(self):
-        self.Xns = []
+        self.its = []
         self.irs = []
 
-    def __call__(self, Xn, importanceratio):
-        self.Xns.append(Xn)
+    def __call__(self, it, importanceratio):
+        self.its.append(it)
         self.irs.append(importanceratio)
 
 
@@ -271,12 +271,20 @@ class ISCbAdaptor(object):
     Importance sampling callback to sum :math:`Z_n`
     """
 
-    def __init__(self, cb, Zncalculator):
+    def __init__(self, W, cb, Zncalculator, unique=False):
+        self.W = W
         self.cb = cb
         self.Zncalculator = Zncalculator
+        self.unique = unique
 
-    def __call__(self, Xn, importanceratio):
-        self.cb(arrayforXn(Xn, self.Zncalculator(Xn) * importanceratio))
+    def __call__(self, it, importanceratio):
+        Xn = it.representative[:self.W]
+        weight = self.Zncalculator(Xn) * importanceratio
+        # If we are sampling unique W-mers rather than occurrences
+        # we must multiply by the number of occurrences
+        if self.unique:
+            weight *= it.numOccurrences
+        self.cb(arrayforXn(Xn, weight))
 
 
 class ISMemoCbAdaptor(ISCbAdaptor):
@@ -285,15 +293,15 @@ class ISMemoCbAdaptor(ISCbAdaptor):
     individual :math:`X_n` and importance ratio.
     """
 
-    def __init__(self, cb, Zncalculator):
-        super(ISMemoCbAdaptor, self).__init__(cb, Zncalculator)
+    def __init__(self, W, cb, Zncalculator, unique=False):
+        super(ISMemoCbAdaptor, self).__init__(W, cb, Zncalculator, unique)
         self.Xns = []
         self.irs = []
 
-    def __call__(self, Xn, importanceratio):
-        self.Xns.append(Xn)
+    def __call__(self, it, importanceratio):
+        self.Xns.append(it.representative[:self.W])
         self.irs.append(importanceratio)
-        super(ISMemoCbAdaptor, self).__call__(Xn, importanceratio)
+        super(ISMemoCbAdaptor, self).__call__(it, importanceratio)
 
     def var(self):
         """Calculate the variance of the Zn estimates."""
@@ -485,9 +493,8 @@ def importancesample(index, W, sampling, numsamples, callback):
         sampling.reset()
         # Sample our W-mer
         it = sampler(index.topdownhistory())
-        Xn = it.representative[:W]
         # Callback
-        callback(Xn, sampling.ir)
+        callback(it, sampling.ir)
     duration = time.time() - start
     logger.info(
         'Took %.3fs to sample %d samples at a rate of %.1f samples/sec',

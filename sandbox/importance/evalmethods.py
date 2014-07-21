@@ -49,6 +49,7 @@ args.stopthreshold = 1e-3  # Stopping threshold (distance per base)
 args.methods = [
     'PWMweights',
     'uniformweights',
+    'uniformunique',
 ]
 # args.writelogos = False
 # args.parallel = True

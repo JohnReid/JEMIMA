@@ -3,16 +3,38 @@
 # install.packages("datatable")
 library(data.table)
 library(dplyr)
+library(reshape2)
 library(ggplot2)
+library(GGally)
 
 #
 # Load data
-statsdf <- data.table(
-    read.csv(gzfile("statsdf-10000-0025.csv.gz")),
-    key=c("seed", "iteration"))
+#
+# filename <- "statsdf-10000-0025.csv.gz"
+# filename <- "statsdf-00003-0005.csv.gz"
+filename <- "statsdf-00004-0010.csv.gz"
+# filename <- "statsdf-12000-0020.csv.gz"
+statsdf <- data.table(read.csv(gzfile(filename)), key=c("seed", "iteration"))
+method.names <- levels(statsdf$method)
+method.names
+# Guess seedidx if not provided
+if(! "seedidx" %in% names(statsdf)) {
+    statsdf$seedidx <- (1:nrow(statsdf) + 1) %/% 2
+}
 dim(statsdf)
 class(statsdf)
 sapply(statsdf, class)
+
+#
+# Reshape data
+#
+molten <- melt(
+    statsdf,
+    id=c("seedidx", "iteration", "method"),
+    measure.vars=c("var", "distperbase"))
+molten
+
+ggplot(statsdf, aes(x=distperbase, color=method)) + geom_density()
 
 has.KL <- ! (is.na(statsdf[["KLestimatetrue"]]) | is.na(statsdf[["KLtrueestimate"]]))
 positive.KL <- (0 < statsdf[["KLestimatetrue"]]) & (0 < statsdf[["KLtrueestimate"]])
@@ -78,11 +100,46 @@ ggplot(
 ggplot(
     data=cmp.dist,
     aes(x=distratio, y=varratio, color=iteration)) +
-    geom_hline(yintercept=1, alpha=alpha) +
-    geom_vline(xintercept=1, alpha=alpha) +
+    geom_hline(yintercept=1, alpha=.2) +
+    geom_vline(xintercept=1, alpha=.2) +
     geom_point(alpha=alpha) +
     scale_x_log10() + scale_y_log10() +
     scale_colour_gradientn(colours=rainbow(4)) +
     coord_cartesian(xlim=c(1e-2, 1e2), ylim=c(1e5, 1e-5))
 
 ggplot(data=cmp.dist, aes(x=durationratio)) + geom_density() + scale_x_log10()
+
+
+# Get the distperbase for each method
+distperbasedf <- statsdf %>%
+    group_by(seedidx, iteration) %>%
+    select(seedidx, iteration, method, distperbase) %>%
+    dcast(seedidx + iteration ~ method, value.var="distperbase")
+
+ggplot(distperbasedf, aes_string(x=method.names[1], y=method.names[2], color="iteration")) +
+    geom_point(alpha=alpha)
+
+pairs.plot <- ggpairs(
+    distperbasedf,
+    columns=method.names,
+    axisLabels="show",
+    diag=list(continuous="density"),
+)
+lims = c(0, max(statsdf$distperbase))
+scatter.coords = coord_cartesian(xlim=lims, ylim=lims)
+density.coords = coord_cartesian(xlim=lims)
+for( rowidx in 1:length(method.names) ) {
+    for( colidx in 1:rowidx ) {
+        if( rowidx > colidx ) {
+            coords <- scatter.coords
+        } else if( rowidx == colidx ) {
+            coords <- density.coords
+        }
+        pairs.plot <- putPlot(
+            pairs.plot,
+            getPlot(pairs.plot, rowidx, colidx) + coords,
+            rowidx, colidx)
+    }
+}
+pairs.plot
+# print pairs.plot

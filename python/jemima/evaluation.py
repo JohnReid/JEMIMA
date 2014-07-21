@@ -168,15 +168,15 @@ def generateseed(args):
     logger.info('Generating seed of width %d from %s', W, fasta)
     seqsdata = getseqsdata(fasta, args.Ws)
     logger.info('Importance sampling using background model to find seed')
+    W = args.Ws[Widx]
+    childfreqs = jis.DistForFreqs(seqsdata.childWmerfreqs[:, Widx])
     memocb = jis.importancesample(
         seqsdata.index,
-        args.Ws[Widx],
-        jis.WeightedSamplingDist(
-            jis.DistForFreqs(seqsdata.childWmerfreqs[:, Widx]),
-            jis.UniformImportanceWeight()),
+        W,
+        jis.WeightedSamplingDist(childfreqs, jis.UniformImportanceWeight()),
         numsamples=1,
         callback=jis.ISCbMemo())
-    return seqsdata, Widx, memocb.Xns[0]
+    return seqsdata, Widx, memocb.its[0].representative[:W]
 
 
 def dotrueiteration(seqsdata, W, pwm, lambda_):
@@ -195,19 +195,21 @@ def pwmweightsmethod(seqsdata, pwm, lambda_, Widx, numsamples, args):
     logger.debug('Importance sampling using PWM importance weights')
     calculateZn = jem.createZncalculatorFn(pwm, lambda_)
     numpositive = numsamples / 2  # Sample half in each orientation
+    W = args.Ws[Widx]
+    childfreqs = jis.DistForFreqs(seqsdata.childWmerfreqs[:, Widx])
     cb = jis.importancesample(
         seqsdata.index,
-        args.Ws[Widx],
+        W,
         jis.WeightedSamplingDist(
-            jis.DistForFreqs(seqsdata.childWmerfreqs[:, Widx]),
+            childfreqs,
             jis.PWMImportanceWeight(pwm)),
         numpositive,
-        jis.ISMemoCbAdaptor(jis.ZnSumCb(args.Ws[Widx]), calculateZn))
+        jis.ISMemoCbAdaptor(W, jis.ZnSumCb(W), calculateZn))
     return jis.importancesample(
         seqsdata.index,
-        args.Ws[Widx],
+        W,
         jis.WeightedSamplingDist(
-            jis.DistForFreqs(seqsdata.childWmerfreqs[:, Widx]),
+            childfreqs,
             jis.PWMImportanceWeight(jem.pwmrevcomp(pwm))),
         numsamples - numpositive,
         cb)
@@ -217,14 +219,28 @@ def pwmweightsmethod(seqsdata, pwm, lambda_, Widx, numsamples, args):
 def uniformweightsmethod(seqsdata, pwm, lambda_, Widx, numsamples, args):
     logger.debug('Importance sampling using uniform weights')
     calculateZn = jem.createZncalculatorFn(pwm, lambda_)
+    W = args.Ws[Widx]
+    childfreqs = jis.DistForFreqs(seqsdata.childuniquefreqs[:, Widx])
     return jis.importancesample(
         seqsdata.index,
-        args.Ws[Widx],
-        jis.WeightedSamplingDist(
-            jis.DistForFreqs(seqsdata.childWmerfreqs[:, Widx]),
-            jis.UniformImportanceWeight()),
+        W,
+        jis.WeightedSamplingDist(childfreqs, jis.UniformImportanceWeight()),
         numsamples,
-        jis.ISMemoCbAdaptor(jis.ZnSumCb(args.Ws[Widx]), calculateZn))
+        jis.ISMemoCbAdaptor(W, jis.ZnSumCb(W), calculateZn))
+
+
+@samplingmethod('uniformunique')
+def uniformuniquemethod(seqsdata, pwm, lambda_, Widx, numsamples, args):
+    logger.debug('Importance sampling using uniform weights')
+    calculateZn = jem.createZncalculatorFn(pwm, lambda_)
+    W = args.Ws[Widx]
+    childfreqs = jis.DistForFreqs(seqsdata.childuniquefreqs[:, Widx])
+    return jis.importancesample(
+        seqsdata.index,
+        W,
+        jis.WeightedSamplingDist(childfreqs, jis.UniformImportanceWeight()),
+        numsamples,
+        jis.ISMemoCbAdaptor(W, jis.ZnSumCb(W), calculateZn, unique=True))
 
 
 def makedf(iscb, Zncalculator, **kwargs):
