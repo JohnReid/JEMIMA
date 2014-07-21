@@ -47,8 +47,9 @@ args.Ws = (6, 8, 11, 14)
 args.pseudocount = 1.
 args.stopthreshold = 1e-3  # Stopping threshold (distance per base)
 args.methods = [
-    'PWMweights',
-    'uniformweights',
+    'PWMoccs',
+    'uniformoccs',
+    'PWMunique',
     'uniformunique',
 ]
 # args.writelogos = False

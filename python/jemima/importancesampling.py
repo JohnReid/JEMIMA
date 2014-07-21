@@ -178,6 +178,18 @@ class PWMImportanceWeight(object):
         return self.pwm[it.repLength]
 
 
+class PWMImportanceWeightUnique(object):
+    """Unique importance weights for a PWM."""
+
+    def __init__(self, pwm, childWmerfreqs):
+        self.pwm = pwm
+        self.childWmerfreqs = childWmerfreqs
+
+    def __call__(self, it):
+        """Return the importance weights for the correct column of the PWM."""
+        return self.pwm[it.repLength] * self.childWmerfreqs(it)
+
+
 class UniformImportanceWeight(object):
     """Uniform importance weights."""
 

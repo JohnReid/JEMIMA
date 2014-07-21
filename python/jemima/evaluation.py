@@ -106,7 +106,7 @@ def countWmers(fasta, Ws):
     logger.info('Counting W-mers for: %s', fasta)
     index, bgfreqs = buildindex(fasta)
     # Count W-mer occurrences
-    numWmers, Wmercounts, childWmerfreqs = \
+    numoccs, occcounts, childoccfreqs = \
         _countWmers(index, Ws, countunique=False)
     # Count unique W-mers
     numunique, uniquecounts, childuniquefreqs = \
@@ -115,8 +115,8 @@ def countWmers(fasta, Ws):
     for Widx, W in enumerate(Ws):
         logger.info(
             'Got %6d occurrences of %6d unique %2d-mers',
-            numWmers[Widx], numunique[Widx], W)
-    return numWmers, Wmercounts, childWmerfreqs, \
+            numoccs[Widx], numunique[Widx], W)
+    return numoccs, occcounts, childoccfreqs, \
         numunique, uniquecounts, childuniquefreqs
 
 
@@ -129,9 +129,9 @@ SequencesData = collections.namedtuple(
         'ids',
         'index',
         'bgfreqs',
-        'numWmers',
-        'Wmercounts',
-        'childWmerfreqs',
+        'numoccs',
+        'occcounts',
+        'childoccfreqs',
         'numunique',
         'uniquecounts',
         'childuniquefreqs',
@@ -142,7 +142,7 @@ SequencesData = collections.namedtuple(
 def getseqsdata(fasta, Ws):
     numbases, seqs, ids = loadfasta(fasta)
     index, bgfreqs = buildindex(fasta)
-    numWmers, Wmercounts, childWmerfreqs, \
+    numoccs, occcounts, childoccfreqs, \
         numunique, uniquecounts, childuniquefreqs = countWmers(fasta, Ws)
     return SequencesData(
         fasta=fasta,
@@ -151,9 +151,9 @@ def getseqsdata(fasta, Ws):
         ids=ids,
         index=index,
         bgfreqs=bgfreqs,
-        numWmers=numWmers,
-        Wmercounts=Wmercounts,
-        childWmerfreqs=childWmerfreqs,
+        numoccs=numoccs,
+        occcounts=occcounts,
+        childoccfreqs=childoccfreqs,
         numunique=numunique,
         uniquecounts=uniquecounts,
         childuniquefreqs=childuniquefreqs,
@@ -169,7 +169,7 @@ def generateseed(args):
     seqsdata = getseqsdata(fasta, args.Ws)
     logger.info('Importance sampling using background model to find seed')
     W = args.Ws[Widx]
-    childfreqs = jis.DistForFreqs(seqsdata.childWmerfreqs[:, Widx])
+    childfreqs = jis.DistForFreqs(seqsdata.childoccfreqs[:, Widx])
     memocb = jis.importancesample(
         seqsdata.index,
         W,
@@ -190,18 +190,18 @@ def dotrueiteration(seqsdata, W, pwm, lambda_):
     return summer
 
 
-@samplingmethod('PWMweights')
-def pwmweightsmethod(seqsdata, pwm, lambda_, Widx, numsamples, args):
+@samplingmethod('PWMoccs')
+def pwmoccsmethod(seqsdata, pwm, lambda_, Widx, numsamples, args):
     logger.debug('Importance sampling using PWM importance weights')
     calculateZn = jem.createZncalculatorFn(pwm, lambda_)
     numpositive = numsamples / 2  # Sample half in each orientation
     W = args.Ws[Widx]
-    childfreqs = jis.DistForFreqs(seqsdata.childWmerfreqs[:, Widx])
+    childoccfreqs = jis.DistForFreqs(seqsdata.childoccfreqs[:, Widx])
     cb = jis.importancesample(
         seqsdata.index,
         W,
         jis.WeightedSamplingDist(
-            childfreqs,
+            childoccfreqs,
             jis.PWMImportanceWeight(pwm)),
         numpositive,
         jis.ISMemoCbAdaptor(W, jis.ZnSumCb(W), calculateZn))
@@ -209,24 +209,52 @@ def pwmweightsmethod(seqsdata, pwm, lambda_, Widx, numsamples, args):
         seqsdata.index,
         W,
         jis.WeightedSamplingDist(
-            childfreqs,
+            childoccfreqs,
             jis.PWMImportanceWeight(jem.pwmrevcomp(pwm))),
         numsamples - numpositive,
         cb)
 
 
-@samplingmethod('uniformweights')
-def uniformweightsmethod(seqsdata, pwm, lambda_, Widx, numsamples, args):
-    logger.debug('Importance sampling using uniform weights')
+@samplingmethod('uniformoccs')
+def uniformoccsmethod(seqsdata, pwm, lambda_, Widx, numsamples, args):
+    logger.debug(
+        'Importance sampling using uniform weights over unique W-mers')
     calculateZn = jem.createZncalculatorFn(pwm, lambda_)
     W = args.Ws[Widx]
-    childfreqs = jis.DistForFreqs(seqsdata.childuniquefreqs[:, Widx])
+    childoccfreqs = jis.DistForFreqs(seqsdata.childoccfreqs[:, Widx])
     return jis.importancesample(
         seqsdata.index,
         W,
-        jis.WeightedSamplingDist(childfreqs, jis.UniformImportanceWeight()),
+        jis.WeightedSamplingDist(
+            childoccfreqs, jis.UniformImportanceWeight()),
         numsamples,
         jis.ISMemoCbAdaptor(W, jis.ZnSumCb(W), calculateZn))
+
+
+@samplingmethod('PWMunique')
+def pwmuniquemethod(seqsdata, pwm, lambda_, Widx, numsamples, args):
+    logger.debug('Importance sampling using PWM weights over unique W-mers')
+    calculateZn = jem.createZncalculatorFn(pwm, lambda_)
+    W = args.Ws[Widx]
+    childuniquefreqs = jis.DistForFreqs(seqsdata.childuniquefreqs[:, Widx])
+    childoccfreqs = jis.DistForFreqs(seqsdata.childoccfreqs[:, Widx])
+    numpositive = numsamples / 2  # Sample half in each orientation
+    cb = jis.importancesample(
+        seqsdata.index,
+        W,
+        jis.WeightedSamplingDist(
+            childuniquefreqs,
+            jis.PWMImportanceWeightUnique(pwm, childoccfreqs)),
+        numpositive,
+        jis.ISMemoCbAdaptor(W, jis.ZnSumCb(W), calculateZn, unique=True))
+    return jis.importancesample(
+        seqsdata.index,
+        W,
+        jis.WeightedSamplingDist(
+            childuniquefreqs,
+            jis.PWMImportanceWeightUnique(jem.pwmrevcomp(pwm), childoccfreqs)),
+        numsamples - numpositive,
+        cb)
 
 
 @samplingmethod('uniformunique')
@@ -234,11 +262,12 @@ def uniformuniquemethod(seqsdata, pwm, lambda_, Widx, numsamples, args):
     logger.debug('Importance sampling using uniform weights')
     calculateZn = jem.createZncalculatorFn(pwm, lambda_)
     W = args.Ws[Widx]
-    childfreqs = jis.DistForFreqs(seqsdata.childuniquefreqs[:, Widx])
+    childuniquefreqs = jis.DistForFreqs(seqsdata.childuniquefreqs[:, Widx])
     return jis.importancesample(
         seqsdata.index,
         W,
-        jis.WeightedSamplingDist(childfreqs, jis.UniformImportanceWeight()),
+        jis.WeightedSamplingDist(
+            childuniquefreqs, jis.UniformImportanceWeight()),
         numsamples,
         jis.ISMemoCbAdaptor(W, jis.ZnSumCb(W), calculateZn, unique=True))
 
@@ -261,23 +290,23 @@ def handleseed(seedidx, seqsdata, Widx, seed, args):
     stats = collections.defaultdict(list)
     W = args.Ws[Widx]
     numseqs = len(seqsdata.seqs)
-    numWmers = seqsdata.numWmers[Widx]
+    numoccs = seqsdata.numoccs[Widx]
     numseedsites = rdm.randint(max(1, numseqs / 10), numseqs * 2)
-    lambda_ = numseqs / float(numWmers)
+    lambda_ = numseqs / float(numoccs)
     pwm = jem.pwmfromWmer(seed, numseedsites, args.pseudocount)
     if args.writelogos:
         jem.logo(pwm, 'seed-%03d' % seedidx)
 
     for iteration in xrange(args.maxiters):
-        numsamples = rdm.randint(max(1, numWmers / 10), numWmers / 2)
-        Zscale = float(numWmers) / numsamples
+        numsamples = rdm.randint(max(1, numoccs / 10), numoccs / 2)
+        Zscale = float(numoccs) / numsamples
         pwmIC = jem.informationcontent(pwm, seqsdata.bgfreqs)
         summer = dotrueiteration(seqsdata, W, pwm, lambda_)
         logger.debug('Sums:\n%s', summer.sums)
         Znsumtrue = summer.sums[0].sum()
         pwmtrue = jem.normalisearray(summer.sums)
         pwmtrueIC = jem.informationcontent(pwmtrue, seqsdata.bgfreqs)
-        lambdatrue = Znsumtrue / float(numWmers)
+        lambdatrue = Znsumtrue / float(numoccs)
         if args.writelogos:
             jem.logo(
                 pwmtrue,
@@ -314,7 +343,7 @@ def handleseed(seedidx, seqsdata, Widx, seed, args):
             stats['lambdastart'].append(lambda_)
             stats['lambdatrue'].append(lambdatrue)
             stats['lambdaestimate'].append(
-                Znsumestimate / float(numWmers))
+                Znsumestimate / float(numoccs))
             stats['distperbase'].append(
                 npy.linalg.norm(pwmtrue - pwmestimate, ord=1) / W)
             stats['KLtrueestimate'].append(

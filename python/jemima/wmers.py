@@ -93,7 +93,7 @@ from . import UNKNOWNBASE, findfirstparentunknown
 
 
 def countWmersMulti(it, Ws, counts, countUnique=True):
-    """Count all the occurrences (or unique W-mers)
+    """Count all the :math:`W`-mer occurrences (or unique W-mers)
     below the iterator for multiple widths, Ws.
 
     Arguments:
