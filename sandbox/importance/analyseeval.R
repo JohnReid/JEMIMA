@@ -12,7 +12,7 @@ library(GGally)
 #
 # filename <- "statsdf-10000-0025.csv.gz"
 # filename <- "statsdf-00003-0005.csv.gz"
-filename <- "statsdf-00010-0020.csv.gz"
+filename <- "statsdf-00048-0020.csv.gz"
 # filename <- "statsdf-12000-0020.csv.gz"
 statsdf <- data.table(read.csv(gzfile(filename)), key=c("seed", "iteration"))
 method.names <- levels(statsdf$method)
@@ -28,27 +28,23 @@ sapply(statsdf, class)
 #
 # Check how accurate our Z estimates are
 #
-print statsdf %>%
-    group_by(method) %>%
+statsdf %>%
+    group_by(method, W) %>%
     summarise(mean(Znsumestimate / Znsumtrue), var(Znsumestimate / Znsumtrue))
-
+facet.width = facet_wrap(~ W)
 ggplot(
     # filter(statsdf, method=="PWMoccs" | method=="uniformoccs"),
     statsdf,
     aes(x=method, y=Znsumestimate / Znsumtrue)) +
-    # scale_y_log10() +
-    geom_boxplot()
+    scale_y_log10() +
+    geom_boxplot() + facet.width
 
 #
-# Reshape data
+# Check how close the estimated PWMs are to the truth
 #
-molten <- melt(
-    statsdf,
-    id=c("seedidx", "iteration", "method"),
-    measure.vars=c("var", "distperbase"))
-molten
-
-ggplot(statsdf, aes(x=distperbase, color=method)) + geom_density()
+ggplot(statsdf, aes(x=distperbase, color=method)) + 
+    geom_density() + facet.width +
+    scale_x_log10()
 
 has.KL <- ! (is.na(statsdf[["KLestimatetrue"]]) | is.na(statsdf[["KLtrueestimate"]]))
 positive.KL <- (0 < statsdf[["KLestimatetrue"]]) & (0 < statsdf[["KLtrueestimate"]])
@@ -59,29 +55,45 @@ min(statsdf[has.KL]$KLestimatetrue)
 min(statsdf[positive.KL & has.KL]$distperbase)
 alpha <- .1
 
+#
+# Investigate if directionality of KL has much effect
+#
 ggplot(
     data=statsdf[has.KL & positive.KL],
     aes(x=KLtrueestimate, y=KLestimatetrue, color=method)) +
     geom_point(alpha=alpha) +
     scale_x_log10() + scale_y_log10()
 
+#
+# Does number of samples correlate with PWM accuracy?
+#
 ggplot(
     data=statsdf[has.KL & positive.KL],
     aes(x=numsamples, y=distperbase, color=method)) +
     geom_point(alpha=alpha) +
     scale_x_log10() + scale_y_log10()
 
+#
+# How does the iteration affect the accuracy of the PWM?
+#
 ggplot(
     data=statsdf[has.KL & positive.KL],
     aes(x=factor(iteration), y=distperbase, color=method)) +
     geom_boxplot(outlier.size=1) +
     scale_y_log10()
 
-ggplot(
-    data=statsdf[has.KL & positive.KL],
-    aes(x=lambdatrue, y=distperbase, color=method)) +
-    geom_point(alpha=alpha) +
-    scale_x_log10() + scale_y_log10()
+# Get the distperbase for each method
+distperbasedf <- statsdf %>%
+    group_by(seedidx, iteration) %>%
+    select(seedidx, iteration, method, distperbase) %>%
+    dcast(seedidx + iteration ~ method, value.var="distperbase")
+
+ggplot(distperbasedf, aes_string(x=method.names[1], y=method.names[2], color="iteration")) +
+    geom_point(alpha=alpha)
+
+
+
+
 
 # sum(statsdf[,method[1],by="seed,iteration"]$V1 == "PWMweights")
 # sum(statsdf[,method[2],by="seed,iteration"]$V1 == "uniformweights")
@@ -122,16 +134,6 @@ ggplot(
     coord_cartesian(xlim=c(1e-2, 1e2), ylim=c(1e5, 1e-5))
 
 ggplot(data=cmp.dist, aes(x=durationratio)) + geom_density() + scale_x_log10()
-
-
-# Get the distperbase for each method
-distperbasedf <- statsdf %>%
-    group_by(seedidx, iteration) %>%
-    select(seedidx, iteration, method, distperbase) %>%
-    dcast(seedidx + iteration ~ method, value.var="distperbase")
-
-ggplot(distperbasedf, aes_string(x=method.names[1], y=method.names[2], color="iteration")) +
-    geom_point(alpha=alpha)
 
 pairs.plot <- ggpairs(
     distperbasedf,
