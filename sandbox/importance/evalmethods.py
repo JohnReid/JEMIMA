@@ -38,8 +38,8 @@ parser.add_argument(
 parser.add_argument(
     '--maxiters', metavar='MAXITERS', type=int, default=3,
     help='Maximum number of EM iterations for each seed')
-# args = parser.parse_args()
-args = parser.parse_args(['--maxiters=1', '--numseeds=1'])
+args = parser.parse_args()
+# args = parser.parse_args(['--maxiters=1', '--numseeds=1'])
 args.rngseed = 1
 args.fastas = ['T00759-small.fa']
 args.Ws = (6, 8, 11, 14)
