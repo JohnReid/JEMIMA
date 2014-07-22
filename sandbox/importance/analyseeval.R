@@ -11,9 +11,10 @@ library(GGally)
 # Load data
 #
 # filename <- "statsdf-10000-0025.csv.gz"
-# filename <- "statsdf-00003-0005.csv.gz"
-filename <- "statsdf-00048-0020.csv.gz"
 # filename <- "statsdf-12000-0020.csv.gz"
+# filename <- "statsdf-00003-0005.csv.gz"
+# filename <- "statsdf-00048-0020.csv.gz"
+filename <- "statsdf-08000-0018.csv.gz"
 statsdf <- data.table(read.csv(gzfile(filename)), key=c("seed", "iteration"))
 method.names <- levels(statsdf$method)
 method.names
@@ -37,14 +38,19 @@ ggplot(
     statsdf,
     aes(x=method, y=Znsumestimate / Znsumtrue)) +
     scale_y_log10() +
-    geom_boxplot() + facet.width
+    geom_boxplot() + facet.width + coord_cartesian(ylim=c(.5, 2.))
 
 #
 # Check how close the estimated PWMs are to the truth
 #
+distlims = c(1e-3, 1e0)
+distxcoords = coord_cartesian(xlim=distlims)
+distycoords = coord_cartesian(ylim=distlims)
+distxycoords = coord_cartesian(xlim=distlims, ylim=distlims)
 ggplot(statsdf, aes(x=distperbase, color=method)) + 
     geom_density() + facet.width +
-    scale_x_log10()
+    scale_x_log10() +
+    distxcoords
 
 has.KL <- ! (is.na(statsdf[["KLestimatetrue"]]) | is.na(statsdf[["KLtrueestimate"]]))
 positive.KL <- (0 < statsdf[["KLestimatetrue"]]) & (0 < statsdf[["KLtrueestimate"]])
@@ -71,7 +77,8 @@ ggplot(
     data=statsdf[has.KL & positive.KL],
     aes(x=numsamples, y=distperbase, color=method)) +
     geom_point(alpha=alpha) +
-    scale_x_log10() + scale_y_log10()
+    scale_x_log10() + scale_y_log10() +
+    distycoords
 
 #
 # How does the iteration affect the accuracy of the PWM?
@@ -80,60 +87,19 @@ ggplot(
     data=statsdf[has.KL & positive.KL],
     aes(x=factor(iteration), y=distperbase, color=method)) +
     geom_boxplot(outlier.size=1) +
-    scale_y_log10()
+    scale_y_log10() + distycoords
 
 # Get the distperbase for each method
 distperbasedf <- statsdf %>%
+    filter(iteration > 2) %>%
     group_by(seedidx, iteration) %>%
-    select(seedidx, iteration, method, distperbase) %>%
-    dcast(seedidx + iteration ~ method, value.var="distperbase")
-
+    select(seedidx, iteration, method, distperbase, W) %>%
+    dcast(seedidx + iteration + W~ method, value.var="distperbase")
+head(distperbasedf)
 ggplot(distperbasedf, aes_string(x=method.names[1], y=method.names[2], color="iteration")) +
-    geom_point(alpha=alpha)
-
-
-
-
-
-# sum(statsdf[,method[1],by="seed,iteration"]$V1 == "PWMweights")
-# sum(statsdf[,method[2],by="seed,iteration"]$V1 == "uniformweights")
-cmp.dist <- statsdf[,
-    list(
-        distratio = distperbase[2] / distperbase[1],
-        durationratio = duration[2] / duration[1],
-        varratio = var[2] / var[1]),
-    by="seed,iteration"]
-
-# Plot the distance ratio without outliers
-# compute lower and upper whiskers
-ylim1 = boxplot.stats(log10(cmp.dist$distratio))$stats[c(1, 5)]
-# scale y limits based on ylim1
-ggplot(
-    data=cmp.dist,
-    aes(x=factor(iteration), y=distratio)) +
-    geom_boxplot(outlier.size=1) + scale_y_log10() +
-    coord_cartesian(ylim = c(.9, 1.1)*10**ylim1)
-
-# Plot the variance ratio without outliers
-ylim1 = boxplot.stats(log10(cmp.dist$varratio))$stats[c(1, 5)]
-ggplot(
-    data=cmp.dist,
-    aes(x=factor(iteration), y=varratio)) +
-    geom_boxplot(outlier.size=1) + scale_y_log10() +
-    coord_cartesian(ylim = c(.9, 1.1)*10**ylim1)
-
-# Plot the variance ratio against the distance ratio
-ggplot(
-    data=cmp.dist,
-    aes(x=distratio, y=varratio, color=iteration)) +
-    geom_hline(yintercept=1, alpha=.2) +
-    geom_vline(xintercept=1, alpha=.2) +
-    geom_point(alpha=alpha) +
+    geom_point(alpha=alpha) + facet.width +
     scale_x_log10() + scale_y_log10() +
-    scale_colour_gradientn(colours=rainbow(4)) +
-    coord_cartesian(xlim=c(1e-2, 1e2), ylim=c(1e5, 1e-5))
-
-ggplot(data=cmp.dist, aes(x=durationratio)) + geom_density() + scale_x_log10()
+    distxycoords
 
 pairs.plot <- ggpairs(
     distperbasedf,
