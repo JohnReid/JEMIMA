@@ -16,8 +16,12 @@ import jemima.importancesampling as jis
 from jemima import wmers
 import seqan.traverse
 import collections
-import functools
 import time
+import os
+import shutil
+import tempfile
+import gzip
+import cPickle
 
 
 METHODS = dict()
@@ -30,37 +34,8 @@ def samplingmethod(name):
     return decorator
 
 
-class memoized(object):
-    '''Decorator. Caches a function's return value each time it is called.
-    If called later with the same arguments, the cached value is returned
-    (not reevaluated).
-    '''
-    def __init__(self, func):
-        self.func = func
-        self.cache = {}
-
-    def __call__(self, *args):
-        if not isinstance(args, collections.Hashable):
-            # uncacheable. a list, for instance.
-            # better to not cache than blow up.
-            return self.func(*args)
-        if args in self.cache:
-            return self.cache[args]
-        else:
-            value = self.func(*args)
-            self.cache[args] = value
-            return value
-
-    def __repr__(self):
-        '''Return the function's docstring.'''
-        return self.func.__doc__
-
-    def __get__(self, obj, objtype):
-        '''Support instance methods.'''
-        return functools.partial(self.__call__, obj)
-
-
-@memoized
+@jem.memoized
+@jem.logtime('load FASTA')
 def loadfasta(fasta):
     """Load sequences from fasta file."""
     logger.info('Loading sequences from: %s', fasta)
@@ -69,7 +44,8 @@ def loadfasta(fasta):
     return numbases, seqs, ids
 
 
-@memoized
+@jem.memoized
+@jem.logtime('build index')
 def buildindex(fasta):
     """Build an index of the sequences."""
     logger.info('Building index for: %s', fasta)
@@ -100,9 +76,17 @@ def _countWmers(index, Ws, countunique):
     return rootcounts, counts, childfreqs
 
 
-@memoized
+@jem.memoized
+@jem.logtime('count W-mers')
 def countWmers(fasta, Ws):
     """Count the W-mers in the sequences."""
+    cachedWmersfilename = fasta + ('.Wmers-%s.pklz' % '-'.join(map(str, Ws)))
+    if os.path.exists(cachedWmersfilename):
+        logger.info('Loading cached W-mer counts from %s',
+                    cachedWmersfilename)
+        with gzip.open(cachedWmersfilename, 'rb') as f:
+            return cPickle.load(f)
+
     logger.info('Counting W-mers for: %s', fasta)
     index, bgfreqs = buildindex(fasta)
     # Count W-mer occurrences
@@ -116,8 +100,17 @@ def countWmers(fasta, Ws):
         logger.info(
             'Got %6d occurrences of %6d unique %2d-mers',
             numoccs[Widx], numunique[Widx], W)
-    return numoccs, occcounts, childoccfreqs, \
+    result = numoccs, occcounts, childoccfreqs, \
         numunique, uniquecounts, childuniquefreqs
+    # Cache the results so we don't bother recalculating them the next time
+    logger.info('Caching W-mer counts to %s',
+                cachedWmersfilename)
+    with tempfile.NamedTemporaryFile(mode='wb', delete=False) as tmpfile:
+        with gzip.GzipFile(tmpfile.name, 'wb', fileobj=tmpfile) as f:
+            cPickle.dump(result, f)
+        tmpname = tmpfile.name
+    shutil.move(tmpname, cachedWmersfilename)
+    return result
 
 
 SequencesData = collections.namedtuple(
@@ -138,7 +131,8 @@ SequencesData = collections.namedtuple(
     ])
 
 
-@memoized
+@jem.memoized
+@jem.logtime('get sequences data')
 def getseqsdata(fasta, Ws):
     numbases, seqs, ids = loadfasta(fasta)
     index, bgfreqs = buildindex(fasta)
@@ -179,6 +173,7 @@ def generateseed(args):
     return seqsdata, Widx, memocb.its[0].representative[:W]
 
 
+@jem.logtime('do one true iteration')
 def dotrueiteration(seqsdata, W, pwm, lambda_):
     """Do one true iteration of EM. I.e. iterate over all W-mers."""
     logger.debug('Calculating true Zn sums')
@@ -289,6 +284,7 @@ def handleseed(seedidx, seqsdata, Widx, seed, args):
     """Test the methods on one seed."""
     stats = collections.defaultdict(list)
     W = args.Ws[Widx]
+    logger.info('Seed: %s; W=%2d', seed, W)
     numseqs = len(seqsdata.seqs)
     numoccs = seqsdata.numoccs[Widx]
     numseedsites = rdm.randint(max(1, numseqs / 10), numseqs * 2)

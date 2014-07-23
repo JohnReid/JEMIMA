@@ -11,6 +11,12 @@ importance sampling.
 
 import seqan
 import numpy as npy
+import contextlib
+import functools
+import time
+import logging
+import collections
+logger = logging.getLogger(__name__)
 
 Base = seqan.DNA5
 String = seqan.StringDNA5
@@ -19,6 +25,57 @@ ALLBASES = tuple(map(Base, 'ACGT'))
 SIGMA = len(ALLBASES)
 LOGQUARTER = npy.log(.25)
 UNIFORM0ORDER = npy.ones(SIGMA) / SIGMA
+
+
+@contextlib.contextmanager
+def loggingtimer(taskmsg, logger=None, level=logging.INFO):
+    if logger is None:
+        logger = logging.getLogger(__name__)
+    start = time.time()
+    yield
+    duration = time.time() - start
+    logger.log(level, 'Took %.2fs to %s', duration, taskmsg)
+
+
+def logtime(taskmsg, logger=None, level=logging.INFO):
+    def decorator(fn):
+        @functools.wraps(fn)
+        def wrapper(*args, **kwargs):
+            with loggingtimer(taskmsg, logger, level):
+                return fn(*args, **kwargs)
+
+        return wrapper
+    return decorator
+
+
+class memoized(object):
+    '''Decorator. Caches a function's return value each time it is called.
+    If called later with the same arguments, the cached value is returned
+    (not reevaluated).
+    '''
+    def __init__(self, func):
+        self.func = func
+        self.cache = {}
+
+    def __call__(self, *args):
+        if not isinstance(args, collections.Hashable):
+            # uncacheable. a list, for instance.
+            # better to not cache than blow up.
+            return self.func(*args)
+        if args in self.cache:
+            return self.cache[args]
+        else:
+            value = self.func(*args)
+            self.cache[args] = value
+            return value
+
+    def __repr__(self):
+        '''Return the function's docstring.'''
+        return self.func.__doc__
+
+    def __get__(self, obj, objtype):
+        '''Support instance methods.'''
+        return functools.partial(self.__call__, obj)
 
 
 def parentEdgeLabelUpToW(it, W):
