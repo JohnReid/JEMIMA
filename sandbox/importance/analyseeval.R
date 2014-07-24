@@ -10,11 +10,12 @@ library(GGally)
 #
 # Load data
 #
-# filename <- "statsdf-10000-0025.csv.gz"
-# filename <- "statsdf-12000-0020.csv.gz"
-# filename <- "statsdf-00003-0005.csv.gz"
-# filename <- "statsdf-00048-0020.csv.gz"
-filename <- "statsdf-08000-0018.csv.gz"
+# filename <- "stats/statsdf-10000-0025.csv.gz"
+# filename <- "stats/statsdf-12000-0020.csv.gz"
+# filename <- "stats/statsdf-00003-0005.csv.gz"
+# filename <- "stats/statsdf-00048-0020.csv.gz"
+# filename <- "stats/statsdf-08000-0018.csv.gz"
+filename <- "stats/statsdf-00200-0022.csv.gz"
 statsdf <- data.table(read.csv(gzfile(filename)), key=c("seed", "iteration"))
 method.names <- levels(statsdf$method)
 method.names
@@ -31,11 +32,13 @@ sapply(statsdf, class)
 #
 statsdf %>%
     group_by(method, W) %>%
-    summarise(mean(Znsumestimate / Znsumtrue), var(Znsumestimate / Znsumtrue))
+    summarise(
+        mean(Znsumestimate / Znsumtrue),
+        var(Znsumestimate / Znsumtrue))
 facet.width = facet_wrap(~ W)
 ggplot(
     # filter(statsdf, method=="PWMoccs" | method=="uniformoccs"),
-    statsdf,
+    statsdf %>% filter(iteration > 1),
     aes(x=method, y=Znsumestimate / Znsumtrue)) +
     scale_y_log10() +
     geom_boxplot() + facet.width + coord_cartesian(ylim=c(.5, 2.))
@@ -59,7 +62,7 @@ min(statsdf[has.KL]$distperbase)
 min(statsdf[has.KL]$KLtrueestimate)
 min(statsdf[has.KL]$KLestimatetrue)
 min(statsdf[positive.KL & has.KL]$distperbase)
-alpha <- .1
+alpha <- .3
 
 #
 # Investigate if directionality of KL has much effect
@@ -77,7 +80,7 @@ ggplot(
     data=statsdf[has.KL & positive.KL],
     aes(x=numsamples, y=distperbase, color=method)) +
     geom_point(alpha=alpha) +
-    scale_x_log10(breaks=seq(min(statsdf$numsamples), max(statsdf$numsamples), by=100)) +
+    scale_x_log10(breaks=seq(min(statsdf$numsamples), max(statsdf$numsamples), by=500)) +
     scale_y_log10() +
     distycoords
 

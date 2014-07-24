@@ -275,7 +275,9 @@ def makedf(iscb, Zncalculator, **kwargs):
 
 def handleseed(seedidx, seqsdata, Widx, seed, args):
     """Test the methods on one seed."""
-    stats = collections.defaultdict(list)
+    seedstats = collections.defaultdict(list)
+    iterstats = collections.defaultdict(list)
+    methodstats = collections.defaultdict(list)
     strippedfasta = stripfastaname(seqsdata.fasta)
     logger.info("Stripped FASTA: %s", strippedfasta)
     W = args.Ws[Widx]
@@ -289,13 +291,20 @@ def handleseed(seedidx, seqsdata, Widx, seed, args):
     pwm = jem.pwmfromWmer(seed, numseedsites, args.pseudocount)
     if args.writelogos:
         jem.logo(pwm, 'seed-%03d' % seedidx)
+    seedstats['seedidx'].append(seedidx)
+    seedstats['fasta'].append(strippedfasta)
+    seedstats['seed'].append(str(seed))
+    seedstats['W'].append(W)
+    seedstats['numseedsites'].append(numseedsites)
 
     for iteration in xrange(args.maxiters):
         # numsamples = rdm.randint(max(1, numoccs / 10), numoccs / 2)
         numsamples = \
             int(rdm.lognormal(mean=npy.log(meannumsamples), sigma=.5)) + 1
         pwmIC = jem.informationcontent(pwm, seqsdata.bgfreqs)
+        start = time.time()
         summer = dotrueiteration(seqsdata, W, pwm, lambda_)
+        truetime = time.time() - start
         logger.debug('Sums:\n%s', summer.sums)
         Znsumtrue = summer.sums[0].sum()
         pwmtrue = jem.normalisearray(summer.sums)
@@ -310,6 +319,15 @@ def handleseed(seedidx, seqsdata, Widx, seed, args):
             'Iteration: %3d, IC/base=%.2f bits, PWM distance/base=%.4f',
             iteration, pwmtrueIC/W,
             npy.linalg.norm(pwmtrue - pwm, ord=1) / W)
+        iterstats['seedidx'].append(seedidx)
+        iterstats['iteration'].append(iteration)
+        iterstats['truetime'].append(truetime)
+        iterstats['numsamples'].append(numsamples)
+        iterstats['ICstart'].append(pwmIC)
+        iterstats['ICtrue'].append(pwmtrueIC)
+        iterstats['Znsumtrue'].append(Znsumtrue)
+        iterstats['lambdastart'].append(lambda_)
+        iterstats['lambdatrue'].append(lambdatrue)
 
         for methodname in args.methods:
             start = time.time()
@@ -319,31 +337,27 @@ def handleseed(seedidx, seqsdata, Widx, seed, args):
             pwmestimate = jem.normalisearray(iscb.cb.sums)
             Znsumestimate = iscb.cb.sums[0].sum() * \
                 float(domainsize) / numsamples
-            stats['fasta'].append(strippedfasta)
-            stats['seed'].append(str(seed))
-            stats['seedidx'].append(seedidx)
-            stats['numseedsites'].append(numseedsites)
-            stats['W'].append(W)
-            stats['iteration'].append(iteration)
-            stats['numsamples'].append(numsamples)
-            stats['method'].append(methodname)
-            stats['duration'].append(duration)
-            stats['ICstart'].append(pwmIC)
-            stats['ICtrue'].append(pwmtrueIC)
-            stats['ICestimate'].append(
+            methodstats['seedidx'].append(seedidx)
+            methodstats['iteration'].append(iteration)
+            methodstats['method'].append(methodname)
+            methodstats['methodtime'].append(duration)
+            methodstats['ICestimate'].append(
                 jem.informationcontent(pwmestimate, seqsdata.bgfreqs))
-            stats['Znsumtrue'].append(Znsumtrue)
-            stats['Znsumestimate'].append(Znsumestimate)
-            stats['var'].append(iscb.var())
-            stats['lambdastart'].append(lambda_)
-            stats['lambdatrue'].append(lambdatrue)
-            stats['lambdaestimate'].append(
+            methodstats['Znsumestimate'].append(Znsumestimate)
+            methodstats['var'].append(iscb.var())
+            methodstats['lambdaestimate'].append(
                 Znsumestimate / float(numoccs))
-            stats['distperbase'].append(
-                npy.linalg.norm(pwmtrue - pwmestimate, ord=1) / W)
-            stats['KLtrueestimate'].append(
+            # Various measures of how different the estimated PWM is from the
+            # true PWM.
+            methodstats['frobeniusdist'].append(
+                npy.linalg.norm(pwmtrue - pwmestimate, ord='fro'))
+            methodstats['maxdist'].append(npy.abs(pwmtrue - pwmestimate).max())
+            methodstats['absdist'].append(npy.abs(pwmtrue - pwmestimate).sum())
+            methodstats['euclideandist'].append(
+                npy.linalg.norm((pwmtrue - pwmestimate).flatten(), ord=2))
+            methodstats['KLtrueestimate'].append(
                 jem.pwmKL(pwmtrue, pwmestimate))
-            stats['KLestimatetrue'].append(
+            methodstats['KLestimatetrue'].append(
                 jem.pwmKL(pwmestimate, pwmtrue))
             if args.writelogos:
                 jem.logo(
@@ -355,7 +369,7 @@ def handleseed(seedidx, seqsdata, Widx, seed, args):
 
         if distperbase < args.stopthreshold:
             break
-    return stats
+    return seedstats, iterstats, methodstats
 
 
 def doseed(seedidx, args):

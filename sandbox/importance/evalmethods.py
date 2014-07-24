@@ -45,13 +45,16 @@ parser.add_argument(
     '--method', '-m', dest="methods", metavar='METHOD', type=str, nargs='+',
     help='Methods to evaluate')
 parser.add_argument(
-    '-W', metavar='W', dest="Ws", type=int, nargs='+', help='Motif widths to evaluate')
+    '-W', metavar='W', dest="Ws", type=int, nargs='+',
+    help='Motif widths to evaluate')
 args = parser.parse_args()
 # args = parser.parse_args(['--maxiters=1', '--numseeds=1'])
 args.rngseed = 1
 if not args.fastas:
     args.fastas = ['T00759-small.fa']
 if not args.methods:
+    logger.info(
+        'No specific evaluation methods requested, using all available')
     args.methods = jemima.evaluation.METHODS.keys()
 if not args.Ws:
     args.Ws = (6, 8, 11, 14)
@@ -66,6 +69,8 @@ logger.info(
     len(args.methods), args.numseeds, args.maxiters, len(args.fastas))
 for fasta in args.fastas:
     logger.info('Using FASTA: %s', fasta)
+for method in args.methods:
+    logger.info('Evaluating method: %s', method)
 
 
 #
@@ -109,20 +114,20 @@ else:
     #
     # Running locally
     #
-    logger.info('Evaluating locally.')
+    logger.info('Evaluating locally')
     rdm.seed(args.rngseed)
     result = map(
         functools.partial(jemima.evaluation.doseed, args=args),
         xrange(args.numseeds))
 
-#
-# Combine results
-#
-statsdf = pds.concat(map(pds.DataFrame, result), ignore_index=True)
 
 #
-# Save results
+# Combine and save results
 #
-resultsfilename = 'statsdf-%05d-%04d.csv.gz' % (args.numseeds, args.maxiters)
-logger.info('Saving results to %s', resultsfilename)
-statsdf.to_csv(gzip.open(resultsfilename, 'wb'))
+for i, name in enumerate(('seed', 'iter', 'method')):
+    stats = pds.concat(
+        map(pds.DataFrame, (r[i] for r in result)), ignore_index=True)
+    resultsfilename = 'stats-%s-%d-%05d-%04d.csv.gz' % (
+        name, len(args.methods), args.numseeds, args.maxiters)
+    logger.info('Saving %s statistics to %s', name, resultsfilename)
+    stats.to_csv(gzip.open(resultsfilename, 'wb'), index=False)
