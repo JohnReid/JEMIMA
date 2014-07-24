@@ -282,7 +282,8 @@ def handleseed(seedidx, seqsdata, Widx, seed, args):
     logger.info('Seed: %s; W=%2d', seed, W)
     numseqs = len(seqsdata.seqs)
     numoccs = seqsdata.numoccs[Widx]
-    meannumsamples = npy.log10(numoccs) * 600
+    numunique = seqsdata.numunique[Widx]
+    meannumsamples = npy.log10(numunique) * 600
     numseedsites = rdm.randint(max(1, numseqs / 10), numseqs * 2)
     lambda_ = numseqs / float(numoccs)
     pwm = jem.pwmfromWmer(seed, numseedsites, args.pseudocount)
@@ -290,8 +291,9 @@ def handleseed(seedidx, seqsdata, Widx, seed, args):
         jem.logo(pwm, 'seed-%03d' % seedidx)
 
     for iteration in xrange(args.maxiters):
-        numsamples = rdm.randint(max(1, numoccs / 10), numoccs / 2)
-        int(rdm.lognormal(mean=npy.log(meannumsamples), sigma=.5)) + 1
+        # numsamples = rdm.randint(max(1, numoccs / 10), numoccs / 2)
+        numsamples = \
+            int(rdm.lognormal(mean=npy.log(meannumsamples), sigma=.5)) + 1
         pwmIC = jem.informationcontent(pwm, seqsdata.bgfreqs)
         summer = dotrueiteration(seqsdata, W, pwm, lambda_)
         logger.debug('Sums:\n%s', summer.sums)
