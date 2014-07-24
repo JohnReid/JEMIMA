@@ -77,7 +77,8 @@ ggplot(
     data=statsdf[has.KL & positive.KL],
     aes(x=numsamples, y=distperbase, color=method)) +
     geom_point(alpha=alpha) +
-    scale_x_log10() + scale_y_log10() +
+    scale_x_log10(breaks=seq(min(statsdf$numsamples), max(statsdf$numsamples), by=100)) +
+    scale_y_log10() +
     distycoords
 
 #

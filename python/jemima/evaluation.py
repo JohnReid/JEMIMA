@@ -17,14 +17,18 @@ from jemima import wmers
 import seqan.traverse
 import collections
 import time
-import os
-import shutil
-import tempfile
-import gzip
-import cPickle
+import re
 
 
 METHODS = dict()
+
+
+def stripfastaname(fasta):
+    """Return a stripped version of the argument with leading directories
+    and anything after ".fa" or ".fasta" removed."""
+    fasta = re.sub(".+/", "", fasta)
+    fasta = re.sub("\\.[Ff][Aa].*", "", fasta)
+    return fasta
 
 
 def samplingmethod(name):
@@ -81,36 +85,25 @@ def _countWmers(index, Ws, countunique):
 def countWmers(fasta, Ws):
     """Count the W-mers in the sequences."""
     cachedWmersfilename = fasta + ('.Wmers-%s.pklz' % '-'.join(map(str, Ws)))
-    if os.path.exists(cachedWmersfilename):
-        logger.info('Loading cached W-mer counts from %s',
-                    cachedWmersfilename)
-        with gzip.open(cachedWmersfilename, 'rb') as f:
-            return cPickle.load(f)
 
-    logger.info('Counting W-mers for: %s', fasta)
-    index, bgfreqs = buildindex(fasta)
-    # Count W-mer occurrences
-    numoccs, occcounts, childoccfreqs = \
-        _countWmers(index, Ws, countunique=False)
-    # Count unique W-mers
-    numunique, uniquecounts, childuniquefreqs = \
-        _countWmers(index, Ws, countunique=True)
-    # Log how many we have for each width
-    for Widx, W in enumerate(Ws):
-        logger.info(
-            'Got %6d occurrences of %6d unique %2d-mers',
-            numoccs[Widx], numunique[Widx], W)
-    result = numoccs, occcounts, childoccfreqs, \
-        numunique, uniquecounts, childuniquefreqs
-    # Cache the results so we don't bother recalculating them the next time
-    logger.info('Caching W-mer counts to %s',
-                cachedWmersfilename)
-    with tempfile.NamedTemporaryFile(mode='wb', delete=False) as tmpfile:
-        with gzip.GzipFile(tmpfile.name, 'wb', fileobj=tmpfile) as f:
-            cPickle.dump(result, f)
-        tmpname = tmpfile.name
-    shutil.move(tmpname, cachedWmersfilename)
-    return result
+    @jem.picklecache(cachedWmersfilename, "W-mer counts cache")
+    def cached():
+        logger.info('Counting W-mers for: %s', fasta)
+        index, bgfreqs = buildindex(fasta)
+        # Count W-mer occurrences
+        numoccs, occcounts, childoccfreqs = \
+            _countWmers(index, Ws, countunique=False)
+        # Count unique W-mers
+        numunique, uniquecounts, childuniquefreqs = \
+            _countWmers(index, Ws, countunique=True)
+        # Log how many we have for each width
+        for Widx, W in enumerate(Ws):
+            logger.info(
+                'Got %6d occurrences of %6d unique %2d-mers',
+                numoccs[Widx], numunique[Widx], W)
+        return numoccs, occcounts, childoccfreqs, \
+            numunique, uniquecounts, childuniquefreqs
+    return cached()
 
 
 SequencesData = collections.namedtuple(
@@ -283,10 +276,13 @@ def makedf(iscb, Zncalculator, **kwargs):
 def handleseed(seedidx, seqsdata, Widx, seed, args):
     """Test the methods on one seed."""
     stats = collections.defaultdict(list)
+    strippedfasta = stripfastaname(seqsdata.fasta)
+    logger.info("Stripped FASTA: %s", strippedfasta)
     W = args.Ws[Widx]
     logger.info('Seed: %s; W=%2d', seed, W)
     numseqs = len(seqsdata.seqs)
     numoccs = seqsdata.numoccs[Widx]
+    meannumsamples = npy.log10(numoccs) * 600
     numseedsites = rdm.randint(max(1, numseqs / 10), numseqs * 2)
     lambda_ = numseqs / float(numoccs)
     pwm = jem.pwmfromWmer(seed, numseedsites, args.pseudocount)
@@ -295,6 +291,7 @@ def handleseed(seedidx, seqsdata, Widx, seed, args):
 
     for iteration in xrange(args.maxiters):
         numsamples = rdm.randint(max(1, numoccs / 10), numoccs / 2)
+        int(rdm.lognormal(mean=npy.log(meannumsamples), sigma=.5)) + 1
         pwmIC = jem.informationcontent(pwm, seqsdata.bgfreqs)
         summer = dotrueiteration(seqsdata, W, pwm, lambda_)
         logger.debug('Sums:\n%s', summer.sums)
@@ -320,7 +317,7 @@ def handleseed(seedidx, seqsdata, Widx, seed, args):
             pwmestimate = jem.normalisearray(iscb.cb.sums)
             Znsumestimate = iscb.cb.sums[0].sum() * \
                 float(domainsize) / numsamples
-            stats['fasta'].append(seqsdata.fasta)
+            stats['fasta'].append(strippedfasta)
             stats['seed'].append(str(seed))
             stats['seedidx'].append(seedidx)
             stats['numseedsites'].append(numseedsites)

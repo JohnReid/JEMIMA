@@ -16,6 +16,11 @@ import functools
 import time
 import logging
 import collections
+import os
+import gzip
+import cPickle
+import tempfile
+import shutil
 logger = logging.getLogger(__name__)
 
 Base = seqan.DNA5
@@ -29,6 +34,8 @@ UNIFORM0ORDER = npy.ones(SIGMA) / SIGMA
 
 @contextlib.contextmanager
 def loggingtimer(taskmsg, logger=None, level=logging.INFO):
+    """A context manager that logs the amount of time taken to
+    perform a task."""
     if logger is None:
         logger = logging.getLogger(__name__)
     start = time.time()
@@ -38,11 +45,39 @@ def loggingtimer(taskmsg, logger=None, level=logging.INFO):
 
 
 def logtime(taskmsg, logger=None, level=logging.INFO):
+    """A decorator that logs the time taken to execute its wrapped
+    function."""
     def decorator(fn):
         @functools.wraps(fn)
         def wrapper(*args, **kwargs):
             with loggingtimer(taskmsg, logger, level):
                 return fn(*args, **kwargs)
+
+        return wrapper
+    return decorator
+
+
+def picklecache(cachefilename, cachetext="cache"):
+    """A decorator that caches the result of its wrapped function call."""
+    def decorator(fn):
+        @functools.wraps(fn)
+        def wrapper():
+            if os.path.exists(cachefilename):
+                logger.info('Loading %s from %s', cachetext, cachefilename)
+                with gzip.open(cachefilename, 'rb') as f:
+                    return cPickle.load(f)
+            # Call the wrapped function
+            result = fn()
+            # Cache the results so we don't bother recalculating them
+            # the next time
+            logger.info('Saving %s to %s', cachetext, cachefilename)
+            with tempfile.NamedTemporaryFile(mode='wb', delete=False) \
+                    as tmpfile:
+                with gzip.GzipFile(tmpfile.name, 'wb', fileobj=tmpfile) as f:
+                    cPickle.dump(result, f)
+                tmpname = tmpfile.name
+            shutil.move(tmpname, cachefilename)
+            return result
 
         return wrapper
     return decorator
