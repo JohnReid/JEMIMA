@@ -1,0 +1,157 @@
+```{r compile, eval=FALSE, include=FALSE}
+library(knitr); system.time(knit2html('analyseeval.Rmd'))
+```
+
+```{r setOpts}
+opts_chunk$set(fig.width=12, fig.height=8)
+opts_chunk$set(out.width='\\textwidth')
+opts_knit$set(width=140)
+
+```
+
+```{r loadLibs}
+# install.packages("data.table")
+library(data.table)
+library(dplyr)
+library(reshape2)
+library(ggplot2)
+library(GGally)
+
+```
+
+```{r loadData, include=FALSE}
+# Load data
+params <- list(num.methods=4, num.seeds=48, max.iters=7)
+load.stats <- function(stats.name, key) {
+    filename <- sprintf(
+        "stats/stats-%s-%d-%05d-%04d.csv.gz",
+        stats.name, params$num.methods, params$num.seeds, params$max.iters)
+    return(data.table(read.csv(gzfile(filename)), key=key))
+}
+seed   <- load.stats("seed"  , key=c("seedidx"))
+iter   <- load.stats("iter"  , key=c("seedidx", "iteration"))
+method <- load.stats("method", key=c("seedidx", "iteration", "method"))
+```
+
+Examine the three data frames and join into one "full" data frame.
+```{r examineData}
+# What are the seed-level attributes?
+colnames(seed)
+# What are the iteration-level attributes?
+colnames(iter)
+# What are the method-level attributes?
+colnames(method)
+# Join into one data frame
+full <- seed %>% inner_join(iter) %>% inner_join(method)
+dim(full)
+sapply(full, class)
+method.names <- levels(method$method)
+method.names
+sample_n(full, 10)
+
+```
+
+Check how accurate our Z estimates are
+```{r checkZestimates}
+(   full
+    %>% filter(iteration > 1)
+    %>% group_by(method, W)
+    %>% summarise(
+            mean=mean(Znsumestimate / Znsumtrue),
+            var=var(Znsumestimate / Znsumtrue))
+)
+facet.width = facet_wrap(~ W)
+(   ggplot(
+        full %>% filter(iteration > 1),
+        aes(x=method, y=Znsumestimate / Znsumtrue))
+    + scale_y_log10()
+    + geom_boxplot()
+    + facet.width
+    + coord_cartesian(ylim=c(.1, 10.))
+)
+
+```
+
+Compare the different PWM distance metrics
+```{r compareDistMetrics}
+dist.metrics <- c(
+    "frobeniusdist", "maxdist", "absdist", "euclideandist"
+    # , "KLtrueestimate", "KLestimatetrue"  # Can be inf or NA
+)
+# full[,dist.metrics]
+ggpairs(
+    full,
+    columns=dist.metrics,
+    axisLabels="show",
+    diag=list(continuous="density")
+)
+
+```
+
+Check how close the estimated PWMs are to the truth
+```{r compareMethodPWMestimates}
+distlims = c(1e-3, 10)
+distxcoords = coord_cartesian(xlim=distlims)
+distycoords = coord_cartesian(ylim=distlims)
+distxycoords = coord_cartesian(xlim=distlims, ylim=distlims)
+ggplot(full, aes(x=absdist / W, color=method)) +
+    geom_density() +
+    scale_x_log10() +
+    distxcoords
+
+```
+
+Investigate if directionality of KL has much effect
+```{r KLdirectionality}
+full.with.KL <- full %>% filter(! is.na(KLestimatetrue), ! is.na(KLtrueestimate))
+alpha <- .3  # Transparency
+ggplot(
+    full.with.KL,
+    aes(x=KLtrueestimate, y=KLestimatetrue, color=method)) +
+    geom_point(alpha=alpha) +
+    scale_x_log10() + scale_y_log10()
+
+```
+
+Does number of samples correlate with PWM accuracy?
+```{r samplesVsAccuracy}
+model <- lm(absdist / W ~ numsamples + factor(method), data=full)
+(   ggplot(
+        full,
+        aes(x=numsamples, y=absdist / W, color=method))
+    + geom_point(alpha=alpha)
+    + scale_x_log10() + scale_y_log10()
+    + distycoords
+    + stat_smooth(method="lm")
+)
+
+```
+
+How does the iteration affect the accuracy of the PWM?
+```{r iterationVsAccuracy}
+ggplot(
+    full,
+    aes(x=factor(iteration), y=absdist / W, color=method)) +
+    geom_boxplot(outlier.size=1) +
+    scale_y_log10() + distycoords
+
+```
+
+Get the distance for each method
+```{r methodDists}
+distance <- (full
+    # %>% filter(iteration > 2)
+    %>% group_by(seedidx, iteration)
+    %>% select(seedidx, iteration, method, absdist, W)
+    %>% mutate(absdistperbase=absdist / W)
+    %>% dcast(seedidx + iteration + W ~ method, value.var="absdistperbase")
+)
+head(distance)
+ggpairs(
+    distance,
+    columns=method.names,
+    axisLabels="show",
+    diag=list(continuous="density"),
+)
+```
+
