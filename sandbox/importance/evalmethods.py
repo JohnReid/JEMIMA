@@ -39,26 +39,27 @@ parser.add_argument(
     '--maxiters', metavar='MAXITERS', type=int, default=3,
     help='Maximum number of EM iterations for each seed')
 parser.add_argument(
-    '--fasta', dest="fastas", metavar='FASTA', type=str, nargs='+',
+    '--fasta', '-f', dest="fastas", metavar='FASTA', type=str, nargs='+',
     help='FASTA files to use')
+parser.add_argument(
+    '--method', '-m', dest="methods", metavar='METHOD', type=str, nargs='+',
+    help='Methods to evaluate')
+parser.add_argument(
+    '-W', metavar='W', type=int, nargs='+', help='Motif widths to evaluate')
 args = parser.parse_args()
 # args = parser.parse_args(['--maxiters=1', '--numseeds=1'])
 args.rngseed = 1
 if not args.fastas:
     args.fastas = ['T00759-small.fa']
-args.Ws = (6, 8, 11, 14)
-# args.numseeds = 40
-# args.maxiters = 2
+if not args.methods:
+    args.methods = jemima.evaluation.METHODS.keys()
+if not args.Ws:
+    args.Ws = (6, 8, 11, 14)
+else:
+    # Need a tuple rather than a list to pass as argument to memoized functions
+    args.Ws = tuple(args.Ws)
 args.pseudocount = 1.
 args.stopthreshold = 1e-3  # Stopping threshold (distance per base)
-args.methods = [
-    'PWMoccs',
-    'uniformoccs',
-    'PWMunique',
-    'uniformunique',
-]
-# args.writelogos = False
-# args.parallel = True
 logger.info(
     'Evaluating %d methods on %d seeds (up to %d iterations) '
     'over %d FASTA files',
