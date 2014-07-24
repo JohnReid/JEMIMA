@@ -45,7 +45,7 @@ parser.add_argument(
     '--method', '-m', dest="methods", metavar='METHOD', type=str, nargs='+',
     help='Methods to evaluate')
 parser.add_argument(
-    '-W', metavar='W', type=int, nargs='+', help='Motif widths to evaluate')
+    '-W', metavar='W', dest="Ws", type=int, nargs='+', help='Motif widths to evaluate')
 args = parser.parse_args()
 # args = parser.parse_args(['--maxiters=1', '--numseeds=1'])
 args.rngseed = 1
