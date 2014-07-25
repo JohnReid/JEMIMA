@@ -21,7 +21,7 @@ library(GGally)
 
 ```{r loadData, include=FALSE}
 # Load data
-params <- list(num.methods=4, num.seeds=48, max.iters=7)
+params <- list(num.methods=4, num.seeds=1000, max.iters=21)
 load.stats <- function(stats.name, key) {
     filename <- sprintf(
         "stats/stats-%s-%d-%05d-%04d.csv.gz",
@@ -57,6 +57,7 @@ Check how accurate our Z estimates are
     %>% filter(iteration > 1)
     %>% group_by(method, W)
     %>% summarise(
+            numestimates=length(Znsumestimate),
             mean=mean(Znsumestimate / Znsumtrue),
             var=var(Znsumestimate / Znsumtrue))
 )
@@ -68,6 +69,14 @@ facet.width = facet_wrap(~ W)
     + geom_boxplot()
     + facet.width
     + coord_cartesian(ylim=c(.1, 10.))
+)
+(   ggplot(
+        full %>% filter(iteration > 1),
+        aes(x=method, y=Znsumestimate / Znsumtrue))
+    + scale_y_log10()
+    + geom_boxplot()
+    + facet.width
+    + coord_cartesian(ylim=c(.9, 1.1))
 )
 
 ```
@@ -115,7 +124,6 @@ ggplot(
 
 Does number of samples correlate with PWM accuracy?
 ```{r samplesVsAccuracy}
-model <- lm(absdist / W ~ numsamples + factor(method), data=full)
 (   ggplot(
         full,
         aes(x=numsamples, y=absdist / W, color=method))
@@ -139,19 +147,38 @@ ggplot(
 
 Get the distance for each method
 ```{r methodDists}
-distance <- (full
+absdistperbase<- (full
     # %>% filter(iteration > 2)
     %>% group_by(seedidx, iteration)
     %>% select(seedidx, iteration, method, absdist, W)
     %>% mutate(absdistperbase=absdist / W)
     %>% dcast(seedidx + iteration + W ~ method, value.var="absdistperbase")
 )
-head(distance)
+head(absdistperbase)
 ggpairs(
-    distance,
+    absdistperbase,
     columns=method.names,
     axisLabels="show",
     diag=list(continuous="density"),
 )
 ```
 
+Examine how the size of the FASTA file affects the accuracy of the best method
+on the longest PWMs.
+```{r fastaSize}
+(   ggplot(
+        full %>% filter(method=="PWMoccs", W==14),
+        aes(x=numsamples, y=absdist / W, color=fasta))
+    + geom_point(alpha=alpha)
+    + scale_x_log10() + scale_y_log10()
+    + distycoords
+    + stat_smooth(method="lm")
+)
+(   ggplot(
+        full %>% filter(method=="PWMoccs", W==14),
+        aes(x=factor(fasta), y=absdist / W, color=method)) +
+        geom_boxplot(outlier.size=1) +
+        scale_y_log10() + distycoords
+)
+
+```
