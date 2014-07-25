@@ -31,6 +31,11 @@ load.stats <- function(stats.name, key) {
 seed   <- load.stats("seed"  , key=c("seedidx"))
 iter   <- load.stats("iter"  , key=c("seedidx", "iteration"))
 method <- load.stats("method", key=c("seedidx", "iteration", "method"))
+fasta  <- read.csv("stats/fasta-6-8-11-14.csv")
+
+# Set up some ggplot2 helpers
+no.legend.alpha <- guides(colour=guide_legend(override.aes=list(alpha=1)))
+facet.width = facet_wrap(~ W)
 ```
 
 Examine the three data frames and join into one "full" data frame.
@@ -42,7 +47,7 @@ colnames(iter)
 # What are the method-level attributes?
 colnames(method)
 # Join into one data frame
-full <- seed %>% inner_join(iter) %>% inner_join(method)
+full <- seed %>% left_join(fasta) %>% inner_join(iter) %>% inner_join(method)
 dim(full)
 sapply(full, class)
 method.names <- levels(method$method)
@@ -61,7 +66,6 @@ Check how accurate our Z estimates are
             mean=mean(Znsumestimate / Znsumtrue),
             var=var(Znsumestimate / Znsumtrue))
 )
-facet.width = facet_wrap(~ W)
 (   ggplot(
         full %>% filter(iteration > 1),
         aes(x=method, y=Znsumestimate / Znsumtrue))
@@ -113,11 +117,12 @@ ggplot(full, aes(x=absdist / W, color=method)) +
 Investigate if directionality of KL has much effect
 ```{r KLdirectionality}
 full.with.KL <- full %>% filter(! is.na(KLestimatetrue), ! is.na(KLtrueestimate))
-alpha <- .3  # Transparency
+alpha <- .03  # Transparency
 ggplot(
     full.with.KL,
     aes(x=KLtrueestimate, y=KLestimatetrue, color=method)) +
     geom_point(alpha=alpha) +
+    + no.legend.alpha
     scale_x_log10() + scale_y_log10()
 
 ```
@@ -128,6 +133,7 @@ Does number of samples correlate with PWM accuracy?
         full,
         aes(x=numsamples, y=absdist / W, color=method))
     + geom_point(alpha=alpha)
+    # + no.legend.alpha
     + scale_x_log10() + scale_y_log10()
     + distycoords
     + stat_smooth(method="lm")
@@ -161,6 +167,35 @@ ggpairs(
     axisLabels="show",
     diag=list(continuous="density"),
 )
+
+```
+
+Calculating the true sum is linear in the number of unique W-mers.
+```{r trueSumTime}
+(   ggplot(
+        full %>% filter(method=="PWMoccs", W==6),
+        aes(y=truetime / numunique, x=fasta))
+    + geom_boxplot()
+    # + scale_x_log10() + scale_y_log10()
+    # + distycoords
+)
+
+(   ggplot(
+        full %>% filter(method=="PWMoccs", W==14),
+        aes(y=truetime / numunique, x=fasta))
+    + geom_boxplot()
+    # + scale_x_log10() + scale_y_log10()
+    # + distycoords
+)
+
+(   ggplot(
+        full %>% filter(method=="PWMoccs"),
+        aes(x=truetime, y=numunique, color=fasta))
+    + geom_point(alpha=alpha, position="jitter")
+    + no.legend.alpha
+    # + scale_x_log10() + scale_y_log10()
+)
+
 ```
 
 Examine how the size of the FASTA file affects the accuracy of the best method
@@ -170,15 +205,33 @@ on the longest PWMs.
         full %>% filter(method=="PWMoccs", W==14),
         aes(x=numsamples, y=absdist / W, color=fasta))
     + geom_point(alpha=alpha)
+    # + no.legend.alpha
     + scale_x_log10() + scale_y_log10()
     + distycoords
     + stat_smooth(method="lm")
 )
+
 (   ggplot(
         full %>% filter(method=="PWMoccs", W==14),
-        aes(x=factor(fasta), y=absdist / W, color=method)) +
+        aes(x=fasta, y=absdist / W)) +
         geom_boxplot(outlier.size=1) +
         scale_y_log10() + distycoords
+)
+
+```
+
+Does estimate relative speed up over true evaluation
+correlate with PWM accuracy?
+```{r speedUpsVsAccuracy}
+# colnames(full)
+(   ggplot(
+        full %>% filter(method=="PWMoccs", W==14),
+        aes(x=methodtime/truetime, y=absdist / W, color=fasta))
+    + geom_point(alpha=alpha)
+    # + no.legend.alpha
+    + scale_x_log10() + scale_y_log10()
+    + distycoords
+    + stat_smooth(method="lm")
 )
 
 ```
