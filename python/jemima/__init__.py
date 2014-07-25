@@ -85,7 +85,7 @@ def picklecache(cachefilename, cachetext="cache"):
 
 def npzcache(cachefilename, cachetext="cache"):
     """A decorator that caches the result of its wrapped function call."""
-    if ! cachefilename.endswith('.npz'):
+    if not cachefilename.endswith('.npz'):
         cachefilename += '.npz'
     def decorator(fn):
         @functools.wraps(fn)
