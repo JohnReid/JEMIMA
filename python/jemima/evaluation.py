@@ -84,9 +84,9 @@ def _countWmers(index, Ws, countunique):
 @jem.logtime('count W-mers')
 def countWmers(fasta, Ws):
     """Count the W-mers in the sequences."""
-    cachedWmersfilename = fasta + ('.Wmers-%s.pklz' % '-'.join(map(str, Ws)))
+    cachedWmersfilename = fasta + ('.Wmers-%s.npz' % '-'.join(map(str, Ws)))
 
-    @jem.picklecache(cachedWmersfilename, "W-mer counts cache")
+    @jem.npzcache(cachedWmersfilename, "W-mer counts cache")
     def cached():
         logger.info('Counting W-mers for: %s', fasta)
         index, bgfreqs = buildindex(fasta)
@@ -101,9 +101,60 @@ def countWmers(fasta, Ws):
             logger.info(
                 'Got %6d occurrences of %6d unique %2d-mers',
                 numoccs[Widx], numunique[Widx], W)
-        return numoccs, occcounts, childoccfreqs, \
+        result = numoccs, occcounts, childoccfreqs, \
             numunique, uniquecounts, childuniquefreqs
-    return cached()
+        return {
+            'numoccs' : numoccs,
+            'occcounts' : occcounts,
+            'childoccfreqs' : childoccfreqs,
+            'numunique' : numunique,
+            'uniquecounts' : uniquecounts,
+            'childuniquefreqs' : childuniquefreqs
+        }
+    result = cached()
+    return (
+        result['numoccs'],
+        result['occcounts'],
+        result['childoccfreqs'],
+        result['numunique'],
+        result['uniquecounts'],
+        result['childuniquefreqs'],
+    )
+
+
+def _storeresult(result):
+    """Test function to try various ways to store a tuple of numpy arrays.
+    """
+    if False:
+        # Try numpy
+        npy.savez_compressed('store-npy.npz', *result)
+    if False:
+        # Try h5py
+        import h5py
+        store = h5py.File("store-h5py.hdf5", "w", compression='lzf')
+        store['numoccs'] = numoccs
+        store['occcounts'] = occcounts
+        store['childoccfreqs'] = childoccfreqs
+        store['numunique'] = numunique
+        store['uniquecounts'] = childuniquefreqs
+        store['childuniquefreqs'] = childuniquefreqs
+    if False:
+        # Try PyTables
+        import tables
+        store = tables.open_file(
+            'store-pytables.hdf5', mode="w",
+            filters=tables.Filters(complib='bzip2', complevel=6))
+        def storearray(name, x):
+            atom = tables.Atom.from_dtype(x.dtype)
+            ds = store.createCArray(store.root, name, atom, x.shape)
+            ds[:] = x
+        storearray('numoccs', numoccs)
+        storearray('occcounts', occcounts)
+        storearray('childoccfreqs', childoccfreqs)
+        storearray('numunique', numunique)
+        storearray('uniquecounts', childuniquefreqs)
+        storearray('childuniquefreqs', childuniquefreqs)
+        store.close()
 
 
 SequencesData = collections.namedtuple(

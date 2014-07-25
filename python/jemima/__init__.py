@@ -18,7 +18,7 @@ import logging
 import collections
 import os
 import gzip
-import cPickle
+import pickle
 import tempfile
 import shutil
 logger = logging.getLogger(__name__)
@@ -71,12 +71,34 @@ def picklecache(cachefilename, cachetext="cache"):
             # Cache the results so we don't bother recalculating them
             # the next time
             logger.info('Saving %s to %s', cachetext, cachefilename)
-            with tempfile.NamedTemporaryFile(mode='wb', delete=False) \
-                    as tmpfile:
+            with tempfile.NamedTemporaryFile(mode='wb',
+                   delete=False, dir=os.path.dirname(cachefilename)) as tmpfile:
                 with gzip.GzipFile(tmpfile.name, 'wb', fileobj=tmpfile) as f:
-                    cPickle.dump(result, f)
+                    pickle.dump(result, f)
                 tmpname = tmpfile.name
             shutil.move(tmpname, cachefilename)
+            return result
+
+        return wrapper
+    return decorator
+
+
+def npzcache(cachefilename, cachetext="cache"):
+    """A decorator that caches the result of its wrapped function call."""
+    if ! cachefilename.endswith('.npz'):
+        cachefilename += '.npz'
+    def decorator(fn):
+        @functools.wraps(fn)
+        def wrapper():
+            if os.path.exists(cachefilename):
+                logger.info('Loading %s from %s', cachetext, cachefilename)
+                return npy.load(cachefilename)
+            # Call the wrapped function
+            result = fn()
+            # Cache the results so we don't bother recalculating them
+            # the next time
+            logger.info('Saving %s to %s', cachetext, cachefilename)
+            npy.savez_compressed(cachefilename, **result)
             return result
 
         return wrapper
